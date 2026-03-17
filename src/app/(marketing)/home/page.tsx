@@ -14,10 +14,10 @@ import {
   BarChart3,
   Zap,
   Shield,
+  Clock,
   TrendingUp,
+  Users,
   Star,
-  Menu,
-  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -146,87 +146,9 @@ const pricingPlans = [
   },
 ];
 
-const navLinks = [
-  { href: "/features", label: "Features" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/solutions", label: "Solutions" },
-  { href: "/about", label: "About" },
-];
-
 export default function HomePage() {
-  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
-
   return (
-    <div className="min-h-screen bg-bg-page">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-bg-card/80 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-accent flex items-center justify-center">
-                <Sparkles className="h-5 w-5 text-white" />
-              </div>
-              <span className="text-xl font-bold text-text-primary">
-                Optimus SEO
-              </span>
-            </Link>
-
-            <nav className="hidden md:flex items-center gap-1">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
-
-            <div className="hidden md:flex items-center gap-3">
-              <Link href="/login">
-                <Button variant="ghost">Sign in</Button>
-              </Link>
-              <Link href="/signup">
-                <Button variant="accent">Start Free Trial</Button>
-              </Link>
-            </div>
-
-            <button
-              className="md:hidden p-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-elevated"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-            </button>
-          </div>
-        </div>
-
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-border bg-bg-card">
-            <div className="px-4 py-4 space-y-2">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="block px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-elevated"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  {link.label}
-                </Link>
-              ))}
-              <div className="pt-4 space-y-2">
-                <Link href="/login" className="block">
-                  <Button variant="secondary" className="w-full">Sign in</Button>
-                </Link>
-                <Link href="/signup" className="block">
-                  <Button variant="accent" className="w-full">Start Free Trial</Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
-      </header>
-
+    <div>
       {/* Hero Section */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-accent/5 to-transparent" />
@@ -253,19 +175,17 @@ export default function HomePage() {
                   <ArrowRight className="h-5 w-5 ml-2" />
                 </Button>
               </Link>
-              <Link href="/dashboard">
-                <Button variant="secondary" size="lg" className="text-lg px-8">
-                  <Play className="h-5 w-5 mr-2" />
-                  View Demo
-                </Button>
-              </Link>
+              <Button variant="secondary" size="lg" className="text-lg px-8">
+                <Play className="h-5 w-5 mr-2" />
+                Watch Demo
+              </Button>
             </div>
             <p className="text-sm text-text-muted mt-4">
               No credit card required • 14-day free trial • Cancel anytime
             </p>
           </div>
 
-          {/* Dashboard Preview */}
+          {/* Hero Image/Dashboard Preview */}
           <div className="mt-16 relative">
             <div className="absolute inset-0 bg-gradient-to-t from-bg-page via-transparent to-transparent z-10 pointer-events-none" />
             <div className="rounded-xl border border-border bg-bg-card shadow-2xl overflow-hidden">
@@ -282,33 +202,62 @@ export default function HomePage() {
                     { label: "Backlinks Built", value: "234" },
                     { label: "Agents Running", value: "6" },
                   ].map((stat) => (
-                    <div key={stat.label} className="p-4 rounded-lg bg-bg-card border border-border">
+                    <div
+                      key={stat.label}
+                      className="p-4 rounded-lg bg-bg-card border border-border"
+                    >
                       <p className="text-sm text-text-muted">{stat.label}</p>
-                      <p className="text-2xl font-bold text-text-primary font-mono">{stat.value}</p>
+                      <p className="text-2xl font-bold text-text-primary font-mono">
+                        {stat.value}
+                      </p>
                     </div>
                   ))}
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-2 p-4 rounded-lg bg-bg-card border border-border h-48">
-                    <p className="text-sm font-medium text-text-primary mb-2">Organic Traffic</p>
+                    <p className="text-sm font-medium text-text-primary mb-2">
+                      Organic Traffic
+                    </p>
                     <div className="h-32 flex items-end gap-1">
-                      {[40, 55, 45, 60, 75, 65, 80, 90, 85, 95, 100, 110].map((h, i) => (
-                        <div key={i} className="flex-1 bg-accent/20 rounded-t" style={{ height: `${h}%` }} />
-                      ))}
+                      {[40, 55, 45, 60, 75, 65, 80, 90, 85, 95, 100, 110].map(
+                        (h, i) => (
+                          <div
+                            key={i}
+                            className="flex-1 bg-accent/20 rounded-t"
+                            style={{ height: `${h}%` }}
+                          />
+                        )
+                      )}
                     </div>
                   </div>
                   <div className="p-4 rounded-lg bg-bg-card border border-border">
-                    <p className="text-sm font-medium text-text-primary mb-2">Agent Activity</p>
+                    <p className="text-sm font-medium text-text-primary mb-2">
+                      Agent Activity
+                    </p>
                     <div className="space-y-2">
                       {[
                         { name: "Content Writer", status: "running" },
                         { name: "Link Builder", status: "running" },
                         { name: "Site Auditor", status: "completed" },
                       ].map((agent) => (
-                        <div key={agent.name} className="flex items-center justify-between text-sm">
-                          <span className="text-text-secondary">{agent.name}</span>
-                          <span className={cn("flex items-center gap-1", agent.status === "running" ? "text-success" : "text-text-muted")}>
-                            {agent.status === "running" && <span className="h-2 w-2 rounded-full bg-success animate-pulse" />}
+                        <div
+                          key={agent.name}
+                          className="flex items-center justify-between text-sm"
+                        >
+                          <span className="text-text-secondary">
+                            {agent.name}
+                          </span>
+                          <span
+                            className={cn(
+                              "flex items-center gap-1",
+                              agent.status === "running"
+                                ? "text-success"
+                                : "text-text-muted"
+                            )}
+                          >
+                            {agent.status === "running" && (
+                              <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
+                            )}
                             {agent.status}
                           </span>
                         </div>
@@ -322,13 +271,15 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Stats */}
+      {/* Stats Section */}
       <section className="border-y border-border bg-bg-card">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map((stat) => (
               <div key={stat.label} className="text-center">
-                <p className="text-3xl md:text-4xl font-bold text-accent font-mono">{stat.value}</p>
+                <p className="text-3xl md:text-4xl font-bold text-accent font-mono">
+                  {stat.value}
+                </p>
                 <p className="text-text-secondary mt-1">{stat.label}</p>
               </div>
             ))}
@@ -336,16 +287,19 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Features */}
+      {/* Features Section */}
       <section className="py-20 md:py-32">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <Badge variant="neutral" className="mb-4">Features</Badge>
+            <Badge variant="neutral" className="mb-4">
+              Features
+            </Badge>
             <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
               Everything you need to dominate SEO
             </h2>
             <p className="text-xl text-text-secondary max-w-2xl mx-auto">
-              Our AI agents handle the entire SEO workflow, from research to execution to reporting.
+              Our AI agents handle the entire SEO workflow, from research to
+              execution to reporting.
             </p>
           </div>
 
@@ -356,7 +310,9 @@ export default function HomePage() {
                   <div className="h-12 w-12 rounded-lg bg-accent/10 flex items-center justify-center mb-4">
                     <feature.icon className="h-6 w-6 text-accent" />
                   </div>
-                  <h3 className="text-lg font-semibold text-text-primary mb-2">{feature.title}</h3>
+                  <h3 className="text-lg font-semibold text-text-primary mb-2">
+                    {feature.title}
+                  </h3>
                   <p className="text-text-secondary">{feature.description}</p>
                 </CardContent>
               </Card>
@@ -369,7 +325,9 @@ export default function HomePage() {
       <section className="py-20 md:py-32 bg-bg-elevated">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <Badge variant="neutral" className="mb-4">How It Works</Badge>
+            <Badge variant="neutral" className="mb-4">
+              How It Works
+            </Badge>
             <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
               SEO on autopilot in 3 steps
             </h2>
@@ -377,15 +335,37 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { step: "1", title: "Connect Your Site", description: "Add your website and connect Google Search Console. Our AI immediately starts analyzing.", icon: Shield },
-              { step: "2", title: "AI Agents Get to Work", description: "Our agents audit your site, research keywords, create content, and build links automatically.", icon: Bot },
-              { step: "3", title: "Watch Rankings Climb", description: "Track your progress with real-time dashboards and automated reports for your clients.", icon: TrendingUp },
+              {
+                step: "1",
+                title: "Connect Your Site",
+                description:
+                  "Add your website and connect Google Search Console. Our AI immediately starts analyzing.",
+                icon: Shield,
+              },
+              {
+                step: "2",
+                title: "AI Agents Get to Work",
+                description:
+                  "Our agents audit your site, research keywords, create content, and build links automatically.",
+                icon: Bot,
+              },
+              {
+                step: "3",
+                title: "Watch Rankings Climb",
+                description:
+                  "Track your progress with real-time dashboards and automated reports for your clients.",
+                icon: TrendingUp,
+              },
             ].map((item) => (
               <div key={item.step} className="text-center">
                 <div className="h-16 w-16 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
-                  <span className="text-2xl font-bold text-accent">{item.step}</span>
+                  <span className="text-2xl font-bold text-accent">
+                    {item.step}
+                  </span>
                 </div>
-                <h3 className="text-xl font-semibold text-text-primary mb-2">{item.title}</h3>
+                <h3 className="text-xl font-semibold text-text-primary mb-2">
+                  {item.title}
+                </h3>
                 <p className="text-text-secondary">{item.description}</p>
               </div>
             ))}
@@ -397,7 +377,9 @@ export default function HomePage() {
       <section className="py-20 md:py-32">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <Badge variant="neutral" className="mb-4">Testimonials</Badge>
+            <Badge variant="neutral" className="mb-4">
+              Testimonials
+            </Badge>
             <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
               Loved by SEO professionals
             </h2>
@@ -409,17 +391,28 @@ export default function HomePage() {
                 <CardContent className="p-6">
                   <div className="flex items-center gap-1 mb-4">
                     {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 fill-warning text-warning" />
+                      <Star
+                        key={i}
+                        className="h-4 w-4 fill-warning text-warning"
+                      />
                     ))}
                   </div>
-                  <p className="text-text-primary mb-6">&ldquo;{testimonial.quote}&rdquo;</p>
+                  <p className="text-text-primary mb-6">
+                    &ldquo;{testimonial.quote}&rdquo;
+                  </p>
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center">
-                      <span className="text-accent font-semibold text-sm">{testimonial.avatar}</span>
+                      <span className="text-accent font-semibold text-sm">
+                        {testimonial.avatar}
+                      </span>
                     </div>
                     <div>
-                      <p className="font-medium text-text-primary">{testimonial.author}</p>
-                      <p className="text-sm text-text-muted">{testimonial.role}</p>
+                      <p className="font-medium text-text-primary">
+                        {testimonial.author}
+                      </p>
+                      <p className="text-sm text-text-muted">
+                        {testimonial.role}
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -429,29 +422,43 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Pricing */}
+      {/* Pricing Preview */}
       <section className="py-20 md:py-32 bg-bg-elevated">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <Badge variant="neutral" className="mb-4">Pricing</Badge>
+            <Badge variant="neutral" className="mb-4">
+              Pricing
+            </Badge>
             <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
               Simple, transparent pricing
             </h2>
-            <p className="text-xl text-text-secondary">Start free, upgrade when you&apos;re ready</p>
+            <p className="text-xl text-text-secondary">
+              Start free, upgrade when you&apos;re ready
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {pricingPlans.map((plan) => (
-              <Card key={plan.name} className={cn("relative", plan.popular && "border-accent ring-2 ring-accent")}>
+              <Card
+                key={plan.name}
+                className={cn(
+                  "relative",
+                  plan.popular && "border-accent ring-2 ring-accent"
+                )}
+              >
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                     <Badge variant="accent">Most Popular</Badge>
                   </div>
                 )}
                 <CardContent className="p-6">
-                  <h3 className="text-xl font-semibold text-text-primary mb-2">{plan.name}</h3>
+                  <h3 className="text-xl font-semibold text-text-primary mb-2">
+                    {plan.name}
+                  </h3>
                   <div className="flex items-baseline gap-1 mb-2">
-                    <span className="text-4xl font-bold text-text-primary">{plan.price}</span>
+                    <span className="text-4xl font-bold text-text-primary">
+                      {plan.price}
+                    </span>
                     <span className="text-text-muted">{plan.period}</span>
                   </div>
                   <p className="text-text-secondary mb-6">{plan.description}</p>
@@ -463,7 +470,10 @@ export default function HomePage() {
                       </li>
                     ))}
                   </ul>
-                  <Button variant={plan.popular ? "accent" : "secondary"} className="w-full">
+                  <Button
+                    variant={plan.popular ? "accent" : "secondary"}
+                    className="w-full"
+                  >
                     {plan.cta}
                   </Button>
                 </CardContent>
@@ -473,14 +483,15 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* CTA */}
+      {/* CTA Section */}
       <section className="py-20 md:py-32">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
             Ready to automate your SEO?
           </h2>
           <p className="text-xl text-text-secondary mb-8">
-            Join 500+ agencies already using Optimus SEO to scale their operations.
+            Join 500+ agencies already using Optimus SEO to scale their
+            operations.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link href="/signup">
@@ -489,60 +500,14 @@ export default function HomePage() {
                 <ArrowRight className="h-5 w-5 ml-2" />
               </Button>
             </Link>
-            <Link href="/dashboard">
+            <Link href="/contact">
               <Button variant="secondary" size="lg" className="text-lg px-8">
-                View Live Demo
+                Talk to Sales
               </Button>
             </Link>
           </div>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="border-t border-border bg-bg-card">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
-            <div className="col-span-2">
-              <Link href="/" className="flex items-center gap-2 mb-4">
-                <div className="h-8 w-8 rounded-lg bg-accent flex items-center justify-center">
-                  <Sparkles className="h-5 w-5 text-white" />
-                </div>
-                <span className="text-xl font-bold text-text-primary">Optimus SEO</span>
-              </Link>
-              <p className="text-text-secondary text-sm mb-4 max-w-xs">
-                Your AI SEO team, on autopilot. Automate your SEO operations and win more clients.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-text-primary mb-4">Product</h3>
-              <ul className="space-y-2">
-                <li><Link href="/features" className="text-sm text-text-secondary hover:text-text-primary">Features</Link></li>
-                <li><Link href="/pricing" className="text-sm text-text-secondary hover:text-text-primary">Pricing</Link></li>
-                <li><Link href="/integrations" className="text-sm text-text-secondary hover:text-text-primary">Integrations</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-text-primary mb-4">Company</h3>
-              <ul className="space-y-2">
-                <li><Link href="/about" className="text-sm text-text-secondary hover:text-text-primary">About</Link></li>
-                <li><Link href="/blog" className="text-sm text-text-secondary hover:text-text-primary">Blog</Link></li>
-                <li><Link href="/careers" className="text-sm text-text-secondary hover:text-text-primary">Careers</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-text-primary mb-4">Legal</h3>
-              <ul className="space-y-2">
-                <li><Link href="/privacy" className="text-sm text-text-secondary hover:text-text-primary">Privacy</Link></li>
-                <li><Link href="/terms" className="text-sm text-text-secondary hover:text-text-primary">Terms</Link></li>
-              </ul>
-            </div>
-          </div>
-          <div className="mt-12 pt-8 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-text-muted">© 2026 Optimus SEO. All rights reserved.</p>
-            <p className="text-sm text-text-muted">Made with ❤️ for SEO professionals</p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
