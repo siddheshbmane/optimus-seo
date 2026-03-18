@@ -19,6 +19,7 @@ import {
   CheckCircle,
   Clock,
   Sparkles,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -107,6 +108,46 @@ const salesTools = [
     status: "ready",
     lastRun: "4 days ago",
     proposals: 2,
+  },
+  {
+    id: "youtube-seo",
+    name: "YouTube SEO",
+    description: "Optimize video content for search",
+    icon: Eye,
+    href: "youtube-seo",
+    status: "ready",
+    lastRun: "1 day ago",
+    videos: 24,
+  },
+  {
+    id: "ecommerce-seo",
+    name: "E-commerce SEO",
+    description: "Product & category optimization",
+    icon: Target,
+    href: "ecommerce-seo",
+    status: "ready",
+    lastRun: "3 days ago",
+    products: 156,
+  },
+  {
+    id: "social-intelligence",
+    name: "Social Intelligence",
+    description: "Brand mentions & review monitoring",
+    icon: Users,
+    href: "social-intelligence",
+    status: "ready",
+    lastRun: "1 hour ago",
+    mentions: 324,
+  },
+  {
+    id: "multi-search",
+    name: "Multi-Search Tracking",
+    description: "Rankings across 6 search engines",
+    icon: Globe,
+    href: "multi-search",
+    status: "ready",
+    lastRun: "2 hours ago",
+    engines: 6,
   },
 ];
 
