@@ -10,8 +10,8 @@ import { cn } from "@/lib/utils";
 const navLinks = [
   { href: "/features", label: "Features" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/solutions", label: "Solutions" },
-  { href: "/about", label: "About" },
+  { href: "/customers", label: "Customers" },
+  { href: "/docs", label: "Docs" },
   { href: "/blog", label: "Blog" },
 ];
 
@@ -179,8 +179,8 @@ export default function MarketingLayout({
                   </Link>
                 </li>
                 <li>
-                  <Link href="/changelog" className="text-sm text-text-secondary hover:text-text-primary">
-                    Changelog
+                  <Link href="/docs" className="text-sm text-text-secondary hover:text-text-primary">
+                    Documentation
                   </Link>
                 </li>
               </ul>
@@ -215,12 +215,22 @@ export default function MarketingLayout({
               </ul>
             </div>
 
-            {/* Legal */}
+            {/* Resources */}
             <div>
               <h3 className="text-sm font-semibold text-text-primary mb-4">
-                Legal
+                Resources
               </h3>
               <ul className="space-y-2">
+                <li>
+                  <Link href="/customers" className="text-sm text-text-secondary hover:text-text-primary">
+                    Customers
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/security" className="text-sm text-text-secondary hover:text-text-primary">
+                    Security
+                  </Link>
+                </li>
                 <li>
                   <Link href="/privacy" className="text-sm text-text-secondary hover:text-text-primary">
                     Privacy
@@ -232,8 +242,8 @@ export default function MarketingLayout({
                   </Link>
                 </li>
                 <li>
-                  <Link href="/security" className="text-sm text-text-secondary hover:text-text-primary">
-                    Security
+                  <Link href="/sla" className="text-sm text-text-secondary hover:text-text-primary">
+                    SLA
                   </Link>
                 </li>
               </ul>
