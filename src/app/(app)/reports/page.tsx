@@ -106,23 +106,23 @@ const scheduledReports = [
 
 export default function GlobalReportsPage() {
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Reports</h1>
-          <p className="text-text-secondary">
+          <h1 className="text-xl sm:text-2xl font-bold text-text-primary">Reports</h1>
+          <p className="text-sm sm:text-base text-text-secondary">
             View and manage reports across all projects
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary">
+          <Button variant="secondary" size="sm" className="sm:size-md">
             <Calendar className="h-4 w-4 mr-2" />
-            Schedule Report
+            <span className="hidden sm:inline">Schedule</span>
           </Button>
-          <Button variant="accent">
+          <Button variant="accent" size="sm" className="sm:size-md">
             <FileText className="h-4 w-4 mr-2" />
-            Generate Report
+            <span className="hidden sm:inline">Generate</span>
           </Button>
         </div>
       </div>

@@ -37,19 +37,40 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = React.useState("profile");
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-text-primary">Settings</h1>
-          <p className="text-text-secondary">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-xl sm:text-2xl font-bold text-text-primary">Settings</h1>
+          <p className="text-sm sm:text-base text-text-secondary">
             Manage your account settings and preferences
           </p>
         </div>
 
-        <div className="flex gap-8">
-          {/* Sidebar */}
-          <div className="w-48 flex-shrink-0">
+        {/* Mobile Tab Navigation */}
+        <div className="md:hidden mb-6 overflow-x-auto">
+          <div className="flex gap-2 pb-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors",
+                  activeTab === tab.id
+                    ? "bg-accent text-white"
+                    : "bg-bg-elevated text-text-secondary"
+                )}
+              >
+                <tab.icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+          {/* Desktop Sidebar */}
+          <div className="hidden md:block w-48 flex-shrink-0">
             <nav className="space-y-1">
               {tabs.map((tab) => (
                 <button
@@ -90,7 +111,7 @@ export default function SettingsPage() {
                         <p className="text-xs text-text-muted mt-1">JPG, PNG or GIF. Max 2MB.</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-text-primary">First Name</label>
                         <Input defaultValue="John" />
