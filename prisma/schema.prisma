@@ -1,0 +1,1298 @@
+// Optimus SEO - Prisma Schema
+// Version: 1.0 | Date: 2026-03-19
+// Based on SCHEMA.md specification
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserRole {
+  owner
+  admin
+  strategist
+  executive
+  sales
+  viewer
+}
+
+enum ProjectStatus {
+  created
+  sales_phase
+  strategy_phase
+  execution_phase
+  reporting
+  completed
+  paused
+  archived
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+  revision_requested
+}
+
+enum ContentStatus {
+  draft
+  in_review
+  revision_needed
+  approved
+  published
+  archived
+}
+
+enum AgentStatus {
+  queued
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum KeywordType {
+  short_tail
+  long_tail
+  generic
+  branded
+}
+
+enum KeywordIntent {
+  commercial
+  informational
+  navigational
+  transactional
+}
+
+enum BacklinkType {
+  directory
+  profile
+  social_bookmarking
+  image_submission
+  guest_post
+  resource_page
+  forum
+  comment
+  web2
+  press_release
+}
+
+enum SubmissionStatus {
+  queued
+  scheduled
+  submitting
+  submitted
+  pending_approval
+  approved
+  rejected
+  failed
+}
+
+enum AuditIssueSeverity {
+  critical
+  high
+  medium
+  low
+  info
+}
+
+enum ReportFormat {
+  pdf
+  ppt
+  html
+}
+
+enum GmbPostType {
+  update
+  offer
+  event
+  product
+}
+
+enum NotificationChannel {
+  in_app
+  email
+  slack
+  webhook
+}
+
+enum LlmProvider {
+  anthropic
+  openai
+  google
+  mistral
+  cohere
+  deepseek
+  groq
+}
+
+// ============================================================================
+// CORE TABLES
+// ============================================================================
+
+model Organization {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String    @db.VarChar(255)
+  slug                  String    @unique @db.VarChar(100)
+  logoUrl               String?   @db.Text
+  primaryColor          String?   @default("#FD8C73") @db.VarChar(7)
+  customDomain          String?   @unique @db.VarChar(255)
+  
+  // Stripe billing
+  stripeCustomerId      String?   @db.VarChar(255)
+  stripeSubscriptionId  String?   @db.VarChar(255)
+  subscriptionStatus    String    @default("trial") @db.VarChar(50)
+  planId                String?   @db.Uuid
+  trialEndsAt           DateTime?
+  
+  // DataForSEO credentials (encrypted)
+  dataforseoLogin       String?   @db.Text
+  dataforseoPassword    String?   @db.Text
+  monthlyApiBudget      Int?      // in cents
+  
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  deletedAt             DateTime?
+
+  // Relations
+  plan                  PricingPlan?           @relation(fields: [planId], references: [id])
+  users                 User[]
+  projects              Project[]
+  apiKeys               ApiKey[]
+  integrations          Integration[]
+  orgSettings           OrgSetting[]
+  contentReviewCriteria ContentReviewCriteria[]
+  notifications         Notification[]
+
+  @@index([slug], name: "idx_org_slug")
+  @@index([stripeCustomerId], name: "idx_org_stripe")
+}
+
+model User {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @db.Uuid
+  email           String    @unique @db.VarChar(255)
+  name            String    @db.VarChar(255)
+  avatarUrl       String?   @db.Text
+  role            UserRole  @default(executive)
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sessions        Session[]
+  createdProjects Project[]         @relation("ProjectCreator")
+  notifications   Notification[]
+  approvalQueue   ApprovalQueue[]   @relation("ApprovalAssignee")
+  reviewedItems   ApprovalQueue[]   @relation("ApprovalReviewer")
+  approvedBriefs  ContentBrief[]    @relation("BriefApprover")
+  approvedStructures WebsiteStructure[] @relation("StructureApprover")
+  approvedStrategies LinkBuildingStrategy[] @relation("StrategyApprover")
+  approvedGmbPosts GmbPost[]        @relation("GmbPostApprover")
+  createdPitchDecks PitchDeck[]
+  createdReports  ClientReport[]
+
+  @@index([email], name: "idx_user_email")
+  @@index([organizationId], name: "idx_user_org")
+  @@index([organizationId, role], name: "idx_user_org_role")
+}
+
+model Session {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @db.Uuid
+  token       String   @unique @db.VarChar(500)
+  expiresAt   DateTime
+  ipAddress   String?  @db.VarChar(45)
+  userAgent   String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token], name: "idx_session_token")
+  @@index([userId], name: "idx_session_user")
+  @@index([expiresAt], name: "idx_session_expires")
+}
+
+model ApiKey {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String      @db.Uuid
+  provider        LlmProvider
+  encryptedKey    String      @db.Text
+  label           String?     @db.VarChar(100)
+  isActive        Boolean     @default(true)
+  lastUsedAt      DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, provider], name: "idx_apikey_org_provider")
+}
+
+model Integration {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @db.Uuid
+  type            String   @db.VarChar(50) // google_search_console, google_analytics, google_business_profile
+  accessToken     String?  @db.Text
+  refreshToken    String?  @db.Text
+  tokenExpiresAt  DateTime?
+  accountId       String?  @db.VarChar(255)
+  metadata        Json     @default("{}")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, type], name: "idx_integration_org_type")
+}
+
+// ============================================================================
+// PROJECT TABLES
+// ============================================================================
+
+model Project {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String        @db.Uuid
+  name            String        @db.VarChar(255)
+  clientUrl       String        @db.VarChar(500)
+  industry        String?       @db.VarChar(100)
+  description     String?       @db.Text
+  status          ProjectStatus @default(created)
+  healthScore     Int?
+  createdById     String?       @db.Uuid
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User?                 @relation("ProjectCreator", fields: [createdById], references: [id])
+  locations       ProjectLocation[]
+  competitors     Competitor[]
+  settings        ProjectSetting[]
+  
+  // Sales Phase
+  siteAudits      SiteAudit[]
+  keywordOverviews KeywordOverview[]
+  competitorOverviews CompetitorOverview[]
+  ppcIntelligence PpcIntelligence[]
+  aiVisibilityChecks AiVisibilityCheck[]
+  gmbAnalyses     GmbAnalysis[]
+  pitchDecks      PitchDeck[]
+  proposals       Proposal[]
+  
+  // Strategy Phase
+  keywords        Keyword[]
+  keywordClusters KeywordCluster[]
+  competitorAnalyses CompetitorAnalysis[]
+  websiteStructures WebsiteStructure[]
+  suggestedPages  SuggestedPage[]
+  contentBriefs   ContentBrief[]
+  linkBuildingStrategies LinkBuildingStrategy[]
+  
+  // Execution Phase
+  contents        Content[]
+  backlinkOpportunities BacklinkOpportunity[]
+  backlinkSubmissions BacklinkSubmission[]
+  onPageTasks     OnPageTask[]
+  gmbPosts        GmbPost[]
+  gmbReviewResponses GmbReviewResponse[]
+  outreachCampaigns OutreachCampaign[]
+  
+  // Reporting Phase
+  rankTrackingConfig RankTrackingConfig?
+  rankTrackings   RankTracking[]
+  trafficData     TrafficData[]
+  aiVisibilityReports AiVisibilityReport[]
+  clientReports   ClientReport[]
+  shareOfVoice    ShareOfVoice[]
+  
+  // System
+  agentTasks      AgentTask[]
+  approvalQueue   ApprovalQueue[]
+
+  @@index([organizationId], name: "idx_project_org")
+  @@index([organizationId, status], name: "idx_project_org_status")
+}
+
+model Location {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationCode        Int      @unique
+  locationName        String   @db.VarChar(255)
+  locationType        String   @db.VarChar(50) // Country, Region, City, DMA
+  countryCode         String?  @db.VarChar(5)
+  countryName         String?  @db.VarChar(100)
+  parentLocationCode  Int?
+  languageCode        String?  @db.VarChar(10)
+  languageName        String?  @db.VarChar(100)
+
+  // Relations
+  projectLocations    ProjectLocation[]
+
+  @@index([locationCode], name: "idx_location_code")
+  @@index([countryCode], name: "idx_location_country")
+}
+
+model ProjectLocation {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId   String   @db.Uuid
+  locationId  String   @db.Uuid
+  isPrimary   Boolean  @default(false)
+
+  // Relations
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  location    Location @relation(fields: [locationId], references: [id])
+
+  @@unique([projectId, locationId])
+  @@index([projectId], name: "idx_projloc_project")
+}
+
+model Competitor {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId       String   @db.Uuid
+  url             String   @db.VarChar(500)
+  name            String?  @db.VarChar(255)
+  isAutoDiscovered Boolean @default(false)
+  domainAuthority Int?
+  organicTraffic  Int?
+  createdAt       DateTime @default(now())
+
+  // Relations
+  project         Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  overviews       CompetitorOverview[]
+  analyses        CompetitorAnalysis[]
+
+  @@index([projectId], name: "idx_competitor_project")
+}
+
+// ============================================================================
+// SALES PHASE TABLES
+// ============================================================================
+
+model SiteAudit {
+  id                      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId               String   @db.Uuid
+  organizationId          String   @db.Uuid
+  healthScore             Int?
+  pagesCrawled            Int      @default(0)
+  lighthousePerformance   Float?
+  lighthouseAccessibility Float?
+  lighthouseSeo           Float?
+  lighthouseBestPractices Float?
+  coreWebVitals           Json     @default("{}")
+  mobileScore             Float?
+  desktopScore            Float?
+  schemaMarkupFound       Json     @default("[]")
+  toxicBacklinksCount     Int?
+  rawData                 Json     @default("{}")
+  summaryNarrative        String?  @db.Text
+  agentTaskId             String?  @db.Uuid
+  createdAt               DateTime @default(now())
+
+  // Relations
+  project                 Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issues                  SiteAuditIssue[]
+  agentTask               AgentTask?       @relation(fields: [agentTaskId], references: [id])
+
+  @@index([projectId], name: "idx_audit_project")
+  @@index([organizationId], name: "idx_audit_org")
+}
+
+model SiteAuditIssue {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  siteAuditId     String             @db.Uuid
+  severity        AuditIssueSeverity
+  category        String             @db.VarChar(100)
+  title           String             @db.VarChar(500)
+  description     String             @db.Text
+  pageUrl         String?            @db.VarChar(500)
+  recommendation  String?            @db.Text
+  isFixed         Boolean            @default(false)
+
+  // Relations
+  siteAudit       SiteAudit          @relation(fields: [siteAuditId], references: [id], onDelete: Cascade)
+
+  @@index([siteAuditId], name: "idx_auditissue_audit")
+  @@index([siteAuditId, severity], name: "idx_auditissue_severity")
+}
+
+model KeywordOverview {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId         String        @db.Uuid
+  organizationId    String        @db.Uuid
+  keyword           String        @db.VarChar(500)
+  serpPosition      Int?
+  searchVolume      Int?
+  estimatedTraffic  Float?
+  cpc               Float?
+  difficulty        Int?
+  keywordType       KeywordType?
+  intent            KeywordIntent?
+  hasFeaturedSnippet Boolean      @default(false)
+  paaQuestions      Json          @default("[]")
+  createdAt         DateTime      @default(now())
+
+  // Relations
+  project           Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId], name: "idx_kwoverview_project")
+  @@index([organizationId], name: "idx_kwoverview_org")
+}
+
+model CompetitorOverview {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId         String   @db.Uuid
+  organizationId    String   @db.Uuid
+  competitorId      String?  @db.Uuid
+  domainAuthority   Int?
+  totalBacklinks    Int?
+  referringDomains  Int?
+  organicKeywords   Int?
+  estimatedTraffic  Int?
+  trafficCost       Float?
+  linkGapDomains    Json     @default("[]")
+  contentGapKeywords Json    @default("[]")
+  shareOfVoice      Float?
+  createdAt         DateTime @default(now())
+
+  // Relations
+  project           Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  competitor        Competitor? @relation(fields: [competitorId], references: [id])
+
+  @@index([projectId], name: "idx_compoverview_project")
+}
+
+model PpcIntelligence {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId             String   @db.Uuid
+  organizationId        String   @db.Uuid
+  totalEstimatedAdSpend Float?
+  topAdvertisers        Json     @default("[]")
+  keywordAdData         Json     @default("[]")
+  bingAdData            Json     @default("[]")
+  adCopyExamples        Json     @default("[]")
+  createdAt             DateTime @default(now())
+
+  // Relations
+  project               Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId], name: "idx_ppc_project")
+}
+
+model AiVisibilityCheck {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId           String   @db.Uuid
+  organizationId      String   @db.Uuid
+  aiVisibilityScore   Int?
+  mentionsChatgpt     Int      @default(0)
+  mentionsClaude      Int      @default(0)
+  mentionsGemini      Int      @default(0)
+  mentionsPerplexity  Int      @default(0)
+  totalImpressions    Int      @default(0)
+  topMentionedDomains Json     @default("[]")
+  topCitedPages       Json     @default("[]")
+  recommendations     String?  @db.Text
+  rawData             Json     @default("{}")
+  createdAt           DateTime @default(now())
+
+  // Relations
+  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId], name: "idx_aivisibility_project")
+}
+
+model GmbAnalysis {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId       String   @db.Uuid
+  organizationId  String   @db.Uuid
+  businessName    String?  @db.VarChar(255)
+  rating          Float?
+  reviewCount     Int      @default(0)
+  reviewSentiment Json     @default("{}")
+  categories      Json     @default("[]")
+  isInLocalPack   Boolean  @default(false)
+  napConsistency  Json     @default("{}")
+  competitorGmb   Json     @default("[]")
+  localSeoScore   Int?
+  rawData         Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  // Relations
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId], name: "idx_gmb_project")
+}
+
+model PitchDeck {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId       String       @db.Uuid
+  organizationId  String       @db.Uuid
+  version         Int          @default(1)
+  filePath        String?      @db.Text
+  format          ReportFormat @default(ppt)
+  status          String       @default("generating") @db.VarChar(50)
+  sentAt          DateTime?
+  createdById     String?      @db.Uuid
+  createdAt       DateTime     @default(now())
+
+  // Relations
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy       User?        @relation(fields: [createdById], references: [id])
+
+  @@index([projectId], name: "idx_pitch_project")
+}
+
+model Proposal {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId       String   @db.Uuid
+  organizationId  String   @db.Uuid
+  scopeOfWork     String?  @db.Text
+  recommendedPlan String?  @db.VarChar(100)
+  timeline        String?  @db.Text
+  pricing         Json     @default("{}")
+  filePath        String?  @db.Text
+  status          String   @default("draft") @db.VarChar(50)
+  createdAt       DateTime @default(now())
+
+  // Relations
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId], name: "idx_proposal_project")
+}
+
+// ============================================================================
+// STRATEGY PHASE TABLES
+// ============================================================================
+
+model Keyword {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId         String        @db.Uuid
+  organizationId    String        @db.Uuid
+  clusterId         String?       @db.Uuid
+  keyword           String        @db.VarChar(500)
+  searchVolume      Int?
+  difficulty        Int?
+  cpc               Float?
+  competition       Float?
+  keywordType       KeywordType?
+  intent            KeywordIntent?
+  funnelStage       String?       @db.VarChar(50)
+  priorityScore     Float?
+  currentPosition   Int?
+  monthlyTrend      Json          @default("[]")
+  hasFeaturedSnippet Boolean      @default(false)
+  paaQuestions      Json          @default("[]")
+  isTarget          Boolean       @default(false)
+  isCannibalized    Boolean       @default(false)
+  isDecaying        Boolean       @default(false)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Relations
+  project           Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  cluster           KeywordCluster? @relation(fields: [clusterId], references: [id])
+  rankTrackings     RankTracking[]
+
+  @@index([projectId], name: "idx_keyword_project")
+  @@index([organizationId], name: "idx_keyword_org")
+  @@index([clusterId], name: "idx_keyword_cluster")
+  @@index([projectId, isTarget], name: "idx_keyword_project_target")
+}
+
+model KeywordCluster {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId       String        @db.Uuid
+  name            String        @db.VarChar(255)
+  pillarKeyword   String?       @db.VarChar(500)
+  intent          KeywordIntent?
+  keywordCount    Int           @default(0)
+  totalVolume     Int           @default(0)
+  avgDifficulty   Float?
+  priorityScore   Float?
+  topicalAuthority String?      @db.VarChar(50)
+  createdAt       DateTime      @default(now())
+
+  // Relations
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keywords        Keyword[]
+
+  @@index([projectId], name: "idx_kwcluster_project")
+}
+
+model CompetitorAnalysis {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId           String   @db.Uuid
+  organizationId      String   @db.Uuid
+  competitorId        String?  @db.Uuid
+  backlinkProfile     Json     @default("{}")
+  contentStrategy     Json     @default("{}")
+  topPages            Json     @default("[]")
+  technicalComparison Json     @default("{}")
+  sponsoredKeywords   Json     @default("[]")
+  estimatedAdSpend    Float?
+  linkSources         Json     @default("{}")
+  serpFeatureOwnership Json    @default("{}")
+  createdAt           DateTime @default(now())
+
+  // Relations
+  project             Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  competitor          Competitor? @relation(fields: [competitorId], references: [id])
+
+  @@index([projectId], name: "idx_companalysis_project")
+}
+
+model WebsiteStructure {
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId           String         @db.Uuid
+  organizationId      String         @db.Uuid
+  currentSitemap      Json           @default("{}")
+  orphanPages         Json           @default("[]")
+  thinContentPages    Json           @default("[]")
+  competitorSitemaps  Json           @default("{}")
+  gapAnalysis         Json           @default("{}")
+  idealSitemap        Json           @default("{}")
+  urlStructure        String?        @db.Text
+  internalLinkingPlan Json           @default("{}")
+  schemaStrategy      Json           @default("{}")
+  status              ApprovalStatus @default(pending)
+  approvedById        String?        @db.Uuid
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  // Relations
+  project             Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  approvedBy          User?           @relation("StructureApprover", fields: [approvedById], references: [id])
+  suggestedPages      SuggestedPage[]
+
+  @@index([projectId], name: "idx_webstructure_project")
+}
+
+model SuggestedPage {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  websiteStructureId  String   @db.Uuid
+  projectId           String   @db.Uuid
+  pageType            String   @db.VarChar(100)
+  suggestedUrl        String?  @db.VarChar(500)
+  title               String   @db.VarChar(255)
+  purpose             String?  @db.Text
+  targetKeywords      Json     @default("[]")
+  competitorReference Json     @default("[]")
+  priority            Int      @default(0)
+  status              String   @default("suggested") @db.VarChar(50)
+  createdAt           DateTime @default(now())
+
+  // Relations
+  websiteStructure    WebsiteStructure @relation(fields: [websiteStructureId], references: [id], onDelete: Cascade)
+  project             Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contentBrief        ContentBrief?
+
+  @@index([websiteStructureId], name: "idx_sugpage_structure")
+  @@index([projectId], name: "idx_sugpage_project")
+}
+
+model ContentBrief {
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  suggestedPageId     String         @unique @db.Uuid
+  projectId           String         @db.Uuid
+  organizationId      String         @db.Uuid
+  primaryKeyword      String         @db.VarChar(500)
+  secondaryKeywords   Json           @default("[]")
+  searchIntent        KeywordIntent?
+  titleTag            String?        @db.VarChar(70)
+  metaDescription     String?        @db.VarChar(170)
+  headingStructure    Json           @default("[]")
+  contentSections     Json           @default("[]")
+  wordCountTarget     Int            @default(1500)
+  internalLinks       Json           @default("[]")
+  externalLinks       Json           @default("[]")
+  mediaSuggestions    Json           @default("[]")
+  ctaPlacements       Json           @default("[]")
+  faqSection          Json           @default("[]")
+  schemaMarkup        String?        @db.VarChar(100)
+  competitorAnalysis  Json           @default("{}")
+  seoScoringCriteria  Json           @default("{}")
+  status              ApprovalStatus @default(pending)
+  approvedById        String?        @db.Uuid
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  // Relations
+  suggestedPage       SuggestedPage  @relation(fields: [suggestedPageId], references: [id], onDelete: Cascade)
+  project             Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  approvedBy          User?          @relation("BriefApprover", fields: [approvedById], references: [id])
+  contents            Content[]
+
+  @@index([projectId], name: "idx_brief_project")
+}
+
+model LinkBuildingStrategy {
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId           String         @db.Uuid
+  organizationId      String         @db.Uuid
+  targetLinksPerMonth Json           @default("{}")
+  priorityDomains     Json           @default("[]")
+  outreachTemplates   Json           @default("[]")
+  linkVelocityTarget  Int?
+  
+  // Safe submission limits (new fields for content-first strategy)
+  directoryLimitPerDay    Int        @default(5)
+  directoryLimitPerWeek   Int        @default(25)
+  profileLimitPerDay      Int        @default(3)
+  profileLimitPerWeek     Int        @default(15)
+  socialBookmarkLimitPerDay Int      @default(10)
+  socialBookmarkLimitPerWeek Int     @default(50)
+  imageLimitPerDay        Int        @default(5)
+  imageLimitPerWeek       Int        @default(25)
+  
+  status              ApprovalStatus @default(pending)
+  approvedById        String?        @db.Uuid
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  // Relations
+  project             Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  approvedBy          User?          @relation("StrategyApprover", fields: [approvedById], references: [id])
+
+  @@index([projectId], name: "idx_linkstrategy_project")
+}
+
+// ============================================================================
+// EXECUTION PHASE TABLES
+// ============================================================================
+
+model Content {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId       String        @db.Uuid
+  organizationId  String        @db.Uuid
+  contentBriefId  String?       @db.Uuid
+  title           String        @db.VarChar(500)
+  metaTitle       String?       @db.VarChar(70)
+  metaDescription String?       @db.VarChar(170)
+  body            String        @db.Text
+  bodyHtml        String?       @db.Text
+  targetKeywords  Json          @default("[]")
+  wordCount       Int           @default(0)
+  contentType     String        @default("blog_post") @db.VarChar(50)
+  style           String?       @db.VarChar(50)
+  status          ContentStatus @default(draft)
+  qualityScore    Int?
+  iterationCount  Int           @default(0)
+  llmProvider     String?       @db.VarChar(50)
+  llmModel        String?       @db.VarChar(100)
+  tokensUsed      Int?
+  schemaMarkup    String?       @db.Text
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  project         Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contentBrief    ContentBrief?        @relation(fields: [contentBriefId], references: [id])
+  reviewResults   ContentReviewResult[]
+  submissions     BacklinkSubmission[]
+
+  @@index([projectId], name: "idx_content_project")
+  @@index([organizationId], name: "idx_content_org")
+  @@index([projectId, status], name: "idx_content_status")
+  @@index([contentBriefId], name: "idx_content_brief")
+}
+
+model ContentReviewCriteria {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String   @db.Uuid
+  name             String   @db.VarChar(255)
+  description      String?  @db.Text
+  category         String   @db.VarChar(100)
+  evaluationPrompt String   @db.Text
+  weight           Float    @default(1.0)
+  threshold        Int      @default(80)
+  isActive         Boolean  @default(true)
+  isDefault        Boolean  @default(false)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewResults    ContentReviewResult[]
+
+  @@index([organizationId], name: "idx_reviewcriteria_org")
+  @@index([organizationId, isActive], name: "idx_reviewcriteria_org_active")
+}
+
+model ContentReviewResult {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contentId       String   @db.Uuid
+  criteriaId      String   @db.Uuid
+  iterationNumber Int      @default(1)
+  score           Int      @default(0)
+  passed          Boolean  @default(false)
+  feedback        String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  // Relations
+  content         Content               @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  criteria        ContentReviewCriteria @relation(fields: [criteriaId], references: [id])
+
+  @@index([contentId], name: "idx_reviewresult_content")
+  @@index([contentId, iterationNumber], name: "idx_reviewresult_content_iteration")
+}
+
+model BacklinkOpportunity {
+  id                      String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId               String       @db.Uuid
+  organizationId          String       @db.Uuid
+  url                     String       @db.VarChar(500)
+  domain                  String       @db.VarChar(255)
+  type                    BacklinkType
+  domainAuthority         Int?
+  spamScore               Int?
+  relevanceScore          Float?
+  submissionUrl           String?      @db.VarChar(500)
+  submissionRequirements  String?      @db.Text
+  status                  String       @default("discovered") @db.VarChar(50)
+  source                  String?      @db.VarChar(100)
+  isSafeForAutoSubmit     Boolean      @default(false) // New field for content-first strategy
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  // Relations
+  project                 Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  submissions             BacklinkSubmission[]
+
+  @@index([projectId], name: "idx_opportunity_project")
+  @@index([organizationId], name: "idx_opportunity_org")
+  @@index([projectId, status], name: "idx_opportunity_status")
+  @@index([domain], name: "idx_opportunity_domain")
+}
+
+model BacklinkSubmission {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId       String           @db.Uuid
+  organizationId  String           @db.Uuid
+  opportunityId   String           @db.Uuid
+  contentId       String?          @db.Uuid
+  status          SubmissionStatus @default(queued)
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  errorMessage    String?          @db.Text
+  retryCount      Int              @default(0)
+  screenshotPath  String?          @db.Text
+  liveUrl         String?          @db.VarChar(500)
+  isLinkLive      Boolean?
+  lastVerifiedAt  DateTime?
+  linkAttribute   String?          @db.VarChar(50)
+  anchorText      String?          @db.VarChar(255) // New field for tracking
+  scheduledAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Relations
+  project         Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  opportunity     BacklinkOpportunity @relation(fields: [opportunityId], references: [id])
+  content         Content?            @relation(fields: [contentId], references: [id])
+
+  @@index([projectId], name: "idx_submission_project")
+  @@index([organizationId], name: "idx_submission_org")
+  @@index([projectId, status], name: "idx_submission_status")
+  @@index([opportunityId], name: "idx_submission_opportunity")
+  @@index([scheduledAt], name: "idx_submission_scheduled")
+}
+
+// New table for Outreach Assistance Agent (F-E08)
+model OutreachCampaign {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId       String   @db.Uuid
+  organizationId  String   @db.Uuid
+  targetUrl       String   @db.VarChar(500)
+  targetDomain    String   @db.VarChar(255)
+  contactEmail    String?  @db.VarChar(255)
+  contactName     String?  @db.VarChar(255)
+  contactFormUrl  String?  @db.VarChar(500)
+  socialProfiles  Json     @default("[]")
+  outreachType    String   @db.VarChar(50) // guest_post, resource_page, broken_link
+  
+  // Email content
+  emailSubject    String?  @db.VarChar(255)
+  emailBody       String?  @db.Text
+  emailVariants   Json     @default("[]") // A/B test variants
+  followUpSequence Json    @default("[]") // Day 3, 7, 14 follow-ups
+  
+  // Tracking
+  status          String   @default("draft") @db.VarChar(50) // draft, sent, opened, replied, linked, rejected, no_response
+  sentAt          DateTime?
+  openedAt        DateTime?
+  repliedAt       DateTime?
+  linkedAt        DateTime?
+  liveUrl         String?  @db.VarChar(500)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId], name: "idx_outreach_project")
+  @@index([projectId, status], name: "idx_outreach_status")
+}
+
+model OnPageTask {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId        String   @db.Uuid
+  organizationId   String   @db.Uuid
+  taskType         String   @db.VarChar(100)
+  pageUrl          String?  @db.VarChar(500)
+  currentValue     String?  @db.Text
+  recommendedValue String?  @db.Text
+  priority         Int      @default(0)
+  status           String   @default("pending") @db.VarChar(50)
+  completedAt      DateTime?
+  createdAt        DateTime @default(now())
+
+  // Relations
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId], name: "idx_onpage_project")
+  @@index([projectId, status], name: "idx_onpage_status")
+}
+
+model GmbPost {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId    String      @db.Uuid
+  organizationId String    @db.Uuid
+  postType     GmbPostType @default(update)
+  title        String?     @db.VarChar(255)
+  body         String      @db.Text
+  imageUrl     String?     @db.Text
+  ctaType      String?     @db.VarChar(50)
+  ctaUrl       String?     @db.VarChar(500)
+  status       String      @default("draft") @db.VarChar(50)
+  scheduledAt  DateTime?
+  publishedAt  DateTime?
+  approvedById String?     @db.Uuid
+  createdAt    DateTime    @default(now())
+
+  // Relations
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  approvedBy   User?       @relation("GmbPostApprover", fields: [approvedById], references: [id])
+
+  @@index([projectId], name: "idx_gmbpost_project")
+  @@index([projectId, status], name: "idx_gmbpost_status")
+  @@index([scheduledAt], name: "idx_gmbpost_scheduled")
+}
+
+model GmbReviewResponse {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId    String   @db.Uuid
+  organizationId String @db.Uuid
+  reviewerName String?  @db.VarChar(255)
+  reviewRating Int?
+  reviewText   String?  @db.Text
+  draftResponse String  @db.Text
+  status       String   @default("draft") @db.VarChar(50)
+  approvedById String?  @db.Uuid
+  postedAt     DateTime?
+  createdAt    DateTime @default(now())
+
+  // Relations
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId], name: "idx_gmbresponse_project")
+}
+
+// ============================================================================
+// REPORTING PHASE TABLES
+// ============================================================================
+
+model RankTrackingConfig {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId        String   @unique @db.Uuid
+  frequency        String   @default("weekly") @db.VarChar(50)
+  maxKeywords      Int      @default(100)
+  serpDepth        Int      @default(30)
+  searchEngines    Json     @default("[\"google\"]")
+  devices          Json     @default("[\"desktop\",\"mobile\"]")
+  trackCompetitors Boolean  @default(true)
+  serpFeatures     Json     @default("[\"featured_snippet\",\"paa\",\"local_pack\"]")
+  alertOnTopEntry  Boolean  @default(true)
+  alertOnDrop      Boolean  @default(true)
+  alertThreshold   Int      @default(5)
+  alertChannels    Json     @default("[\"in_app\"]")
+  lastRunAt        DateTime?
+  nextRunAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([nextRunAt], name: "idx_rankconfig_nextrun")
+}
+
+model RankTracking {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId        String   @db.Uuid
+  organizationId   String   @db.Uuid
+  keywordId        String?  @db.Uuid
+  keyword          String   @db.VarChar(500)
+  locationCode     Int
+  searchEngine     String   @default("google") @db.VarChar(50)
+  device           String   @default("desktop") @db.VarChar(50)
+  position         Int?
+  previousPosition Int?
+  positionChange   Int?
+  url              String?  @db.VarChar(500)
+  serpFeatures     Json     @default("[]")
+  searchVolume     Int?
+  checkedAt        DateTime @default(now())
+
+  // Relations
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keywordRef       Keyword? @relation(fields: [keywordId], references: [id])
+
+  @@index([projectId, checkedAt], name: "idx_rank_project_date")
+  @@index([keywordId, checkedAt], name: "idx_rank_keyword_date")
+  @@index([organizationId], name: "idx_rank_org")
+}
+
+model TrafficData {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId        String   @db.Uuid
+  organizationId   String   @db.Uuid
+  source           String   @db.VarChar(50)
+  date             DateTime @db.Date
+  clicks           Int?
+  impressions      Int?
+  ctr              Float?
+  avgPosition      Float?
+  estimatedTraffic Int?
+  trafficValue     Float?
+  locationCode     Int?
+  device           String?  @db.VarChar(50)
+  rawData          Json     @default("{}")
+  createdAt        DateTime @default(now())
+
+  // Relations
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, date], name: "idx_traffic_project_date")
+  @@index([projectId, source, date], name: "idx_traffic_project_source_date")
+}
+
+model AiVisibilityReport {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId            String   @db.Uuid
+  organizationId       String   @db.Uuid
+  aiVisibilityScore    Int?
+  mentionsByPlatform   Json     @default("{}")
+  totalImpressions     Int      @default(0)
+  topMentionedDomains  Json     @default("[]")
+  competitorComparison Json     @default("{}")
+  recommendations      String?  @db.Text
+  checkedAt            DateTime @default(now())
+
+  // Relations
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, checkedAt], name: "idx_aireport_project_date")
+}
+
+model ClientReport {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId        String       @db.Uuid
+  organizationId   String       @db.Uuid
+  title            String       @db.VarChar(255)
+  format           ReportFormat @default(pdf)
+  filePath         String?      @db.Text
+  sections         Json         @default("[]")
+  periodStart      DateTime     @db.Date
+  periodEnd        DateTime     @db.Date
+  executiveSummary String?      @db.Text
+  status           String       @default("generating") @db.VarChar(50)
+  sentAt           DateTime?
+  sentTo           Json         @default("[]")
+  createdById      String?      @db.Uuid
+  createdAt        DateTime     @default(now())
+
+  // Relations
+  project          Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy        User?        @relation(fields: [createdById], references: [id])
+
+  @@index([projectId], name: "idx_clientreport_project")
+  @@index([projectId, periodStart, periodEnd], name: "idx_clientreport_period")
+}
+
+model ShareOfVoice {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId            String   @db.Uuid
+  organizationId       String   @db.Uuid
+  domain               String   @db.VarChar(255)
+  isClient             Boolean  @default(false)
+  keywordsInTop10      Int      @default(0)
+  keywordsInTop3       Int      @default(0)
+  totalTrackedKeywords Int      @default(0)
+  sovPercentage        Float    @default(0)
+  serpFeaturesOwned    Json     @default("{}")
+  checkedAt            DateTime @default(now())
+
+  // Relations
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, checkedAt], name: "idx_sov_project_date")
+  @@index([projectId, domain], name: "idx_sov_project_domain")
+}
+
+// ============================================================================
+// SYSTEM TABLES
+// ============================================================================
+
+model AgentTask {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId       String?     @db.Uuid
+  organizationId  String      @db.Uuid
+  agentName       String      @db.VarChar(100)
+  action          String      @db.VarChar(255)
+  status          AgentStatus @default(queued)
+  priority        Int         @default(0)
+  input           Json        @default("{}")
+  output          Json        @default("{}")
+  errorMessage    String?     @db.Text
+  tokensUsed      Int?
+  apiCost         Float?
+  durationMs      Int?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime    @default(now())
+
+  // Relations
+  project         Project?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  logs            AgentLog[]
+  siteAudits      SiteAudit[]
+
+  @@index([projectId], name: "idx_agenttask_project")
+  @@index([organizationId], name: "idx_agenttask_org")
+  @@index([status], name: "idx_agenttask_status")
+  @@index([agentName, status], name: "idx_agenttask_agent_status")
+}
+
+model AgentLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentTaskId String   @db.Uuid
+  level       String   @default("info") @db.VarChar(20)
+  message     String   @db.Text
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  // Relations
+  agentTask   AgentTask @relation(fields: [agentTaskId], references: [id], onDelete: Cascade)
+
+  @@index([agentTaskId], name: "idx_agentlog_task")
+  @@index([agentTaskId, level], name: "idx_agentlog_task_level")
+}
+
+model ApprovalQueue {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId      String         @db.Uuid
+  organizationId String         @db.Uuid
+  itemType       String         @db.VarChar(100)
+  itemId         String         @db.Uuid
+  title          String         @db.VarChar(500)
+  description    String?        @db.Text
+  assignedRole   UserRole
+  assignedUserId String?        @db.Uuid
+  status         ApprovalStatus @default(pending)
+  feedback       String?        @db.Text
+  reviewedById   String?        @db.Uuid
+  reviewedAt     DateTime?
+  createdAt      DateTime       @default(now())
+
+  // Relations
+  project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedUser   User?          @relation("ApprovalAssignee", fields: [assignedUserId], references: [id])
+  reviewedBy     User?          @relation("ApprovalReviewer", fields: [reviewedById], references: [id])
+
+  @@index([organizationId, status], name: "idx_approval_org_status")
+  @@index([projectId], name: "idx_approval_project")
+  @@index([assignedRole, status], name: "idx_approval_assigned")
+}
+
+model Notification {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String              @db.Uuid
+  organizationId String              @db.Uuid
+  type           String              @db.VarChar(100)
+  title          String              @db.VarChar(255)
+  message        String              @db.Text
+  channel        NotificationChannel @default(in_app)
+  isRead         Boolean             @default(false)
+  metadata       Json                @default("{}")
+  createdAt      DateTime            @default(now())
+
+  // Relations
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead], name: "idx_notification_user_read")
+  @@index([userId, createdAt], name: "idx_notification_user_date")
+}
+
+model ProjectSetting {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId String   @db.Uuid
+  key       String   @db.VarChar(255)
+  value     Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, key])
+}
+
+model OrgSetting {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @db.Uuid
+  key            String       @db.VarChar(255)
+  value          Json         @default("{}")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relations
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+}
+
+model PricingPlan {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String   @db.VarChar(100)
+  slug          String   @unique @db.VarChar(100)
+  stripePriceId String?  @db.VarChar(255)
+  monthlyPrice  Int      @default(0)
+  yearlyPrice   Int?
+  features      Json     @default("{}")
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  organizations Organization[]
+}

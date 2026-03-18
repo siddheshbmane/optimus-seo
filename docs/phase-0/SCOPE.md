@@ -42,12 +42,32 @@ An AI-agent-powered SEO operations platform that automates 85-90% of executive S
 ### 1.3 Elevator Pitch
 SEO agencies and businesses spend 80% of their time on execution — keyword research, backlink prospecting, content writing, submissions, audits, reporting. Optimus SEO replaces that execution layer with a team of specialized AI agents powered by real SEO data (DataForSEO). Strategists decide what to do. Agents do the work. Humans approve 10-15% of critical actions. The result: an agency that delivers 10x more with the same team.
 
+### 1.3.1 Strategic Philosophy: Content-First SEO
+
+**Core Principle**: Focus on creating exceptional content and tools that naturally attract backlinks, rather than aggressive link building.
+
+| Priority | Focus Area | Approach |
+|----------|------------|----------|
+| **1st** | Content Creation | AI-powered articles, guides, tools, calculators |
+| **2nd** | Technical SEO | Site health, Core Web Vitals, schema markup |
+| **3rd** | Topical Authority | Comprehensive topic clusters, pillar content |
+| **4th** | Foundational Links | Safe auto-submissions (directories, profiles) |
+| **5th** | High-Value Links | Outreach assistance for guest posts |
+
+**Why Content-First?**
+- Google's algorithms increasingly reward topical authority and helpful content
+- Natural backlinks from great content are more valuable than built links
+- Lower risk of algorithmic penalties
+- Sustainable long-term SEO growth
+- AI search (ChatGPT, Gemini) favors authoritative, well-structured content
+
 ### 1.4 Problem Statement
 - **SEO execution is labor-intensive**: A single client project requires keyword research, competitor analysis, content creation, backlink building, technical audits, and monthly reporting — each taking hours of manual work.
 - **Existing tools are analysis-only**: Ahrefs, SEMrush, and Moz tell you WHAT to do but don't DO it. They're dashboards, not execution engines.
 - **Scaling requires hiring**: To take on more clients, agencies must hire more SEO executives. This is expensive, slow, and creates quality inconsistency.
 - **Reporting is manual**: Monthly client reports take hours to compile from multiple data sources.
 - **AI search is a blind spot**: Most agencies have no visibility into how their clients appear in ChatGPT, Claude, Gemini, or Perplexity responses.
+- **Link building is risky**: Aggressive backlink strategies can trigger Google penalties, yet agencies still rely on outdated tactics.
 
 ### 1.5 Target Audience
 - **Primary**: SEO agencies (B2B) — managing SEO for multiple clients
@@ -584,15 +604,17 @@ MarTech / SEO / Digital Marketing Automation
 
 #### F-E03: Backlink Prospecting Agent
 
-**Description**: Automated discovery of backlink submission opportunities using DataForSEO data and web scraping.
+**Description**: Automated discovery of backlink submission opportunities using DataForSEO data and web scraping. Focuses on finding high-quality opportunities across safe submission types.
 
 **User Stories**:
 - As an **Executive**, I want the agent to find relevant, high-DA submission opportunities categorized by type so that I can focus on strategy instead of manual prospecting.
+- As a **Strategist**, I want opportunities scored by quality and safety so that we only pursue links that won't trigger Google penalties.
 
 **Acceptance Criteria**:
-- Given a project and approved link building strategy, when prospecting agent runs, then it: finds opportunities via DataForSEO Backlinks API (link gap domains, competitor referring domains), categorizes by type (directory, profile, guest post, forum, comment, resource page), scores by DA, relevance, spam score, submission difficulty.
-- Given web scraping logic (to be defined), then it identifies submission pages/forms on discovered opportunities.
+- Given a project and approved link building strategy, when prospecting agent runs, then it: finds opportunities via DataForSEO Backlinks API (link gap domains, competitor referring domains), categorizes by type (directory, profile, social bookmarking, image submission, guest post, resource page), scores by DA, relevance, spam score, submission difficulty.
+- Given web scraping logic, then it identifies submission pages/forms on discovered opportunities.
 - Given opportunities, then they are added to the approved opportunities list for submission.
+- Given opportunity type, then it flags: **Safe for auto-submit** (directory, profile, social bookmarking, image) vs **Requires outreach** (guest post, resource page).
 
 **Priority**: P0 (Must-have)
 **Complexity**: High
@@ -600,24 +622,69 @@ MarTech / SEO / Digital Marketing Automation
 
 ---
 
-#### F-E04: Backlink Submission Agent
+#### F-E04: Backlink Submission Agent (Safe Automation)
 
-**Description**: Autonomous backlink submission agent that submits 100%-quality-scored content to approved opportunities. Operates within configurable time limits and pacing.
+**Description**: Autonomous backlink submission agent for **safe submission types only**: directories, profiles, social bookmarking, and image submissions. Operates within configurable limits with algorithm safety warnings.
+
+**Strategic Note**: This agent focuses on foundational link building. High-value links (guest posts, resource pages) are handled by the Outreach Assistance Agent (F-E08) which requires human involvement.
+
+**Safe Submission Types** (Auto-submit enabled):
+| Type | Risk Level | Auto-Submit | Notes |
+|------|------------|-------------|-------|
+| Directory Submissions | ✅ Low | Yes | Business directories, niche directories |
+| Profile Creation | ✅ Low | Yes | Social profiles, forum profiles, Web 2.0 |
+| Social Bookmarking | ✅ Low | Yes | Reddit, Pinterest, Mix, Digg |
+| Image Submissions | ✅ Low | Yes | Flickr, Imgur, image directories |
 
 **User Stories**:
-- As a **Strategist**, I want submissions to happen automatically once content passes quality review, with configurable pacing to avoid spam flags.
-- As an **Executive**, I want to set submission frequency and time windows so that link building looks natural.
+- As a **Strategist**, I want safe submission types to happen automatically with configurable pacing to build foundational links without penalty risk.
+- As an **Executive**, I want to set submission limits per day/week per type so that link velocity stays within safe bounds.
+- As a **Strategist**, I want the system to warn me if my configured limits exceed safe thresholds based on Google's algorithm patterns.
 
 **Acceptance Criteria**:
-- Given 100%-scored content + approved opportunities, then submission is autonomous (no human review needed — quality gate already passed).
-- Given configurator settings, then submission respects: max submissions per hour, max per day, max per week, time windows (e.g., 9am-6pm), randomized delays between submissions (anti-detection).
-- Given each submission, then tracking records: status (queued → submitting → submitted → pending_approval → approved → rejected), screenshot proof, timestamp, follow-up schedule.
+- Given 100%-scored content + approved opportunities of safe types, then submission is autonomous.
+- Given configurator settings, then submission respects per-type limits:
+  - **Directory submissions**: max per day, max per week (default: 5/day, 25/week)
+  - **Profile creation**: max per day, max per week (default: 3/day, 15/week)
+  - **Social bookmarking**: max per day, max per week (default: 10/day, 50/week)
+  - **Image submissions**: max per day, max per week (default: 5/day, 25/week)
+- Given configured limits, then **Algorithm Safety Check** runs:
+  - If total links/day > 20: ⚠️ Warning "High velocity may trigger SpamBrain"
+  - If total links/week > 100: ⚠️ Warning "Consider reducing for natural link profile"
+  - If same anchor text > 30%: ⚠️ Warning "Diversify anchor text"
+  - User must acknowledge warnings before saving config.
+- Given each submission, then tracking records: status, screenshot proof, timestamp, link type, anchor text used.
 - Given submission errors, then retry logic with configurable max retries.
-- Given link velocity, then alert if building too fast (Google penalty risk).
+- Given weekly summary, then report shows: links built by type, anchor text distribution, velocity trend.
 
-**Priority**: P0 (Must-have)
-**Complexity**: Very High
+**Priority**: P1 (Should-have)
+**Complexity**: High
 **Dependencies**: F-E02 (AI Reviewer), F-E03 (Prospecting), Web scraping, Configurator
+
+---
+
+#### F-E08: Outreach Assistance Agent (NEW)
+
+**Description**: AI-powered outreach assistant for high-value link building opportunities (guest posts, resource pages, broken link building). Does NOT auto-submit — instead helps find contacts, generate personalized emails, and track outreach campaigns.
+
+**Strategic Note**: High-quality backlinks require human relationships. This agent accelerates the outreach process while keeping humans in control of actual communication.
+
+**User Stories**:
+- As a **Strategist**, I want the agent to find contact information for target websites so that I can reach out for guest post opportunities.
+- As an **Executive**, I want AI-generated personalized outreach emails so that I can send more pitches in less time.
+- As a **Strategist**, I want to track outreach campaigns (sent, opened, replied, linked) so that I can measure link building ROI.
+
+**Acceptance Criteria**:
+- Given a target website from F-E03 (guest post or resource page opportunity), then agent finds: editor/webmaster email, contact form URL, social media profiles, recent content topics.
+- Given target website + our content, then agent generates: personalized outreach email (3 variants), subject line options (A/B test), follow-up email sequence (Day 3, Day 7, Day 14).
+- Given outreach templates, then user can: edit before sending, save as template, mark as sent manually.
+- Given sent outreach, then tracking records: sent date, opened (if trackable), replied, outcome (linked/rejected/no response).
+- Given outreach history, then dashboard shows: total sent, response rate, link acquisition rate, best performing templates.
+- Given broken link building mode, then agent: finds broken links on target sites, suggests our content as replacement, generates "broken link" outreach email.
+
+**Priority**: P1 (Should-have)
+**Complexity**: Medium
+**Dependencies**: F-E03 (Prospecting), Email integration (optional), LLM
 
 ---
 
