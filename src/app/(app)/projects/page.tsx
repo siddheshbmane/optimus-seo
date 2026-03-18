@@ -17,6 +17,8 @@ import {
   PlayCircle,
   Pause,
   CheckCircle,
+  ChevronRight,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,6 +34,7 @@ export default function ProjectsPage() {
   const [viewMode, setViewMode] = React.useState<ViewMode>("grid");
   const [searchQuery, setSearchQuery] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
+  const [showFilters, setShowFilters] = React.useState(false);
 
   const filteredProjects = mockProjects.filter((project) => {
     const matchesSearch =
@@ -65,44 +68,63 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Projects</h1>
-          <p className="text-text-secondary">
+          <h1 className="text-xl sm:text-2xl font-bold text-text-primary">Projects</h1>
+          <p className="text-sm sm:text-base text-text-secondary">
             Manage and monitor all your SEO projects
           </p>
         </div>
-        <Button variant="accent">
+        <Button variant="accent" className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           New Project
         </Button>
       </div>
 
       {/* Filters Bar */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 flex-1">
+      <div className="space-y-3">
+        {/* Search and Filter Toggle */}
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Search */}
-          <div className="relative max-w-sm flex-1">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
             <Input
               placeholder="Search projects..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
+              className="pl-9 text-sm sm:text-base"
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
-          {/* Status Filter */}
-          <div className="flex items-center gap-1 p-1 bg-bg-elevated rounded-lg">
+          {/* Mobile Filter Toggle */}
+          <Button 
+            variant="secondary" 
+            size="sm" 
+            className="sm:hidden"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Filter className="h-4 w-4" />
+          </Button>
+
+          {/* Desktop Status Filter */}
+          <div className="hidden sm:flex items-center gap-1 p-1 bg-bg-elevated rounded-lg">
             {(["all", "active", "paused", "completed"] as StatusFilter[]).map(
               (status) => (
                 <button
                   key={status}
                   onClick={() => setStatusFilter(status)}
                   className={cn(
-                    "px-3 py-1.5 text-sm font-medium rounded-md transition-colors capitalize",
+                    "px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors capitalize",
                     statusFilter === status
                       ? "bg-bg-card text-text-primary shadow-sm"
                       : "text-text-secondary hover:text-text-primary"
@@ -114,49 +136,72 @@ export default function ProjectsPage() {
             )}
           </div>
 
-          {/* More Filters */}
-          <Button variant="ghost" size="sm">
-            <Filter className="h-4 w-4 mr-2" />
-            Filters
-          </Button>
+          {/* View Toggle - Hidden on mobile */}
+          <div className="hidden md:flex items-center gap-1 p-1 bg-bg-elevated rounded-lg">
+            <button
+              onClick={() => setViewMode("grid")}
+              className={cn(
+                "p-1.5 rounded-md transition-colors",
+                viewMode === "grid"
+                  ? "bg-bg-card text-text-primary shadow-sm"
+                  : "text-text-muted hover:text-text-primary"
+              )}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={cn(
+                "p-1.5 rounded-md transition-colors",
+                viewMode === "list"
+                  ? "bg-bg-card text-text-primary shadow-sm"
+                  : "text-text-muted hover:text-text-primary"
+              )}
+            >
+              <List className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
-        {/* View Toggle */}
-        <div className="flex items-center gap-1 p-1 bg-bg-elevated rounded-lg">
-          <button
-            onClick={() => setViewMode("grid")}
-            className={cn(
-              "p-1.5 rounded-md transition-colors",
-              viewMode === "grid"
-                ? "bg-bg-card text-text-primary shadow-sm"
-                : "text-text-muted hover:text-text-primary"
+        {/* Mobile Filters */}
+        {showFilters && (
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:hidden scrollbar-hide">
+            {(["all", "active", "paused", "completed"] as StatusFilter[]).map(
+              (status) => (
+                <button
+                  key={status}
+                  onClick={() => setStatusFilter(status)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-medium rounded-full transition-colors capitalize whitespace-nowrap",
+                    statusFilter === status
+                      ? "bg-accent text-white"
+                      : "bg-bg-elevated text-text-secondary"
+                  )}
+                >
+                  {status}
+                </button>
+              )
             )}
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setViewMode("list")}
-            className={cn(
-              "p-1.5 rounded-md transition-colors",
-              viewMode === "list"
-                ? "bg-bg-card text-text-primary shadow-sm"
-                : "text-text-muted hover:text-text-primary"
-            )}
-          >
-            <List className="h-4 w-4" />
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Projects Grid/List */}
-      {viewMode === "grid" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProjects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-2">
+      {/* Mobile always shows cards, desktop respects viewMode */}
+      <div className={cn(
+        "grid gap-3 sm:gap-4",
+        viewMode === "grid" || true // Always grid on mobile
+          ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+          : "grid-cols-1"
+      )}>
+        {filteredProjects.map((project) => (
+          <ProjectCard key={project.id} project={project} viewMode={viewMode} />
+        ))}
+      </div>
+
+      {/* Desktop List View */}
+      {viewMode === "list" && (
+        <div className="hidden md:block space-y-2">
           {/* List Header */}
           <div className="grid grid-cols-12 gap-4 px-4 py-2 text-xs font-medium text-text-muted uppercase tracking-wider">
             <div className="col-span-4">Project</div>
@@ -248,14 +293,14 @@ export default function ProjectsPage() {
 
       {/* Empty State */}
       {filteredProjects.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="h-16 w-16 rounded-full bg-bg-elevated flex items-center justify-center mb-4">
-            <Globe className="h-8 w-8 text-text-muted" />
+        <div className="flex flex-col items-center justify-center py-12 sm:py-16 text-center">
+          <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-full bg-bg-elevated flex items-center justify-center mb-4">
+            <Globe className="h-7 w-7 sm:h-8 sm:w-8 text-text-muted" />
           </div>
-          <h3 className="text-lg font-medium text-text-primary mb-1">
+          <h3 className="text-base sm:text-lg font-medium text-text-primary mb-1">
             No projects found
           </h3>
-          <p className="text-text-secondary mb-4">
+          <p className="text-sm sm:text-base text-text-secondary mb-4">
             {searchQuery
               ? "Try adjusting your search or filters"
               : "Get started by creating your first project"}
@@ -272,22 +317,24 @@ export default function ProjectsPage() {
   );
 }
 
-function ProjectCard({ project }: { project: Project }) {
+function ProjectCard({ project, viewMode }: { project: Project; viewMode: ViewMode }) {
   return (
     <Link href={`/projects/${project.id}/sales`}>
       <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full">
-        <CardContent className="p-4">
+        <CardContent className="p-3 sm:p-4">
           {/* Header */}
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center">
-                <span className="text-accent font-semibold text-sm">
+          <div className="flex items-start justify-between mb-3 sm:mb-4">
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+              <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
+                <span className="text-accent font-semibold text-xs sm:text-sm">
                   {project.name.charAt(0)}
                 </span>
               </div>
-              <div>
-                <h3 className="font-medium text-text-primary">{project.name}</h3>
-                <p className="text-sm text-text-muted truncate max-w-[180px]">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-medium text-sm sm:text-base text-text-primary truncate">
+                  {project.name}
+                </h3>
+                <p className="text-xs sm:text-sm text-text-muted truncate">
                   {project.url}
                 </p>
               </div>
@@ -297,26 +344,26 @@ function ProjectCard({ project }: { project: Project }) {
                 e.preventDefault();
                 e.stopPropagation();
               }}
-              className="p-1 rounded hover:bg-bg-elevated text-text-muted hover:text-text-primary"
+              className="p-1 rounded hover:bg-bg-elevated text-text-muted hover:text-text-primary flex-shrink-0"
             >
               <MoreHorizontal className="h-4 w-4" />
             </button>
           </div>
 
           {/* Health Score */}
-          <div className="mb-4">
+          <div className="mb-3 sm:mb-4">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-sm text-text-secondary">Health Score</span>
+              <span className="text-xs sm:text-sm text-text-secondary">Health Score</span>
               <span
                 className={cn(
-                  "font-mono font-semibold",
+                  "font-mono font-semibold text-sm",
                   getHealthScoreColor(project.healthScore)
                 )}
               >
                 {project.healthScore}/100
               </span>
             </div>
-            <div className="h-2 bg-bg-elevated rounded-full overflow-hidden">
+            <div className="h-1.5 sm:h-2 bg-bg-elevated rounded-full overflow-hidden">
               <div
                 className={cn(
                   "h-full rounded-full transition-all",
@@ -332,48 +379,51 @@ function ProjectCard({ project }: { project: Project }) {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="text-center p-2 bg-bg-elevated rounded-lg">
-              <div className="flex items-center justify-center gap-1 text-text-muted mb-1">
-                <Target className="h-3.5 w-3.5" />
+          <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-3 sm:mb-4">
+            <div className="text-center p-1.5 sm:p-2 bg-bg-elevated rounded-lg">
+              <div className="flex items-center justify-center gap-1 text-text-muted mb-0.5 sm:mb-1">
+                <Target className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               </div>
-              <p className="font-mono font-semibold text-text-primary text-sm">
+              <p className="font-mono font-semibold text-text-primary text-xs sm:text-sm">
                 {formatNumber(project.keywords)}
               </p>
-              <p className="text-xs text-text-muted">Keywords</p>
+              <p className="text-[10px] sm:text-xs text-text-muted">Keywords</p>
             </div>
-            <div className="text-center p-2 bg-bg-elevated rounded-lg">
-              <div className="flex items-center justify-center gap-1 text-text-muted mb-1">
-                <Link2 className="h-3.5 w-3.5" />
+            <div className="text-center p-1.5 sm:p-2 bg-bg-elevated rounded-lg">
+              <div className="flex items-center justify-center gap-1 text-text-muted mb-0.5 sm:mb-1">
+                <Link2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               </div>
-              <p className="font-mono font-semibold text-text-primary text-sm">
+              <p className="font-mono font-semibold text-text-primary text-xs sm:text-sm">
                 {formatNumber(project.backlinks)}
               </p>
-              <p className="text-xs text-text-muted">Backlinks</p>
+              <p className="text-[10px] sm:text-xs text-text-muted">Backlinks</p>
             </div>
-            <div className="text-center p-2 bg-bg-elevated rounded-lg">
-              <div className="flex items-center justify-center gap-1 text-text-muted mb-1">
+            <div className="text-center p-1.5 sm:p-2 bg-bg-elevated rounded-lg">
+              <div className="flex items-center justify-center gap-1 text-text-muted mb-0.5 sm:mb-1">
                 {project.trafficTrend > 0 ? (
-                  <TrendingUp className="h-3.5 w-3.5 text-success" />
+                  <TrendingUp className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-success" />
                 ) : project.trafficTrend < 0 ? (
-                  <TrendingDown className="h-3.5 w-3.5 text-error" />
+                  <TrendingDown className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-error" />
                 ) : (
-                  <TrendingUp className="h-3.5 w-3.5" />
+                  <TrendingUp className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                 )}
               </div>
-              <p className="font-mono font-semibold text-text-primary text-sm">
+              <p className="font-mono font-semibold text-text-primary text-xs sm:text-sm">
                 {formatNumber(project.traffic)}
               </p>
-              <p className="text-xs text-text-muted">Traffic</p>
+              <p className="text-[10px] sm:text-xs text-text-muted">Traffic</p>
             </div>
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between pt-3 border-t border-border">
-            <Badge variant={project.status === "active" ? "success" : project.status === "paused" ? "warning" : "neutral"}>
+          <div className="flex items-center justify-between pt-2.5 sm:pt-3 border-t border-border">
+            <Badge 
+              variant={project.status === "active" ? "success" : project.status === "paused" ? "warning" : "neutral"}
+              className="text-[10px] sm:text-xs"
+            >
               {project.status}
             </Badge>
-            <div className="flex items-center gap-1 text-xs text-text-muted">
+            <div className="flex items-center gap-1 text-[10px] sm:text-xs text-text-muted">
               {project.agents.running > 0 && (
                 <span className="flex items-center gap-1 text-info">
                   <span className="h-1.5 w-1.5 rounded-full bg-info animate-pulse" />

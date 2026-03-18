@@ -20,6 +20,7 @@ import {
   Clock,
   Sparkles,
   Globe,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -190,86 +191,96 @@ export default function SalesOverviewPage() {
   if (!project) return null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Sales Tools</h1>
-          <p className="text-text-secondary">
+          <h1 className="text-xl sm:text-2xl font-bold text-text-primary">Sales Tools</h1>
+          <p className="text-sm sm:text-base text-text-secondary">
             Research and analysis tools to win new clients
           </p>
         </div>
-        <Button variant="accent">
+        <Button variant="accent" className="w-full sm:w-auto">
           <Sparkles className="h-4 w-4 mr-2" />
           Run Full Analysis
         </Button>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Quick Stats - 2x2 on mobile */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
           label="Health Score"
           value={`${project.healthScore}/100`}
           trend={5.2}
           trendLabel="vs last audit"
-          icon={<CheckCircle className="h-5 w-5" />}
+          icon={<CheckCircle className="h-4 sm:h-5 w-4 sm:w-5" />}
         />
         <StatCard
-          label="Technical Issues"
+          label="Issues"
           value="23"
           trend={-15}
           trendLabel="vs last audit"
-          icon={<AlertTriangle className="h-5 w-5" />}
+          icon={<AlertTriangle className="h-4 sm:h-5 w-4 sm:w-5" />}
         />
         <StatCard
-          label="Keyword Opportunities"
+          label="Keywords"
           value={formatNumber(project.keywords)}
           trend={18.5}
           trendLabel="new this month"
-          icon={<Target className="h-5 w-5" />}
+          icon={<Target className="h-4 sm:h-5 w-4 sm:w-5" />}
         />
         <StatCard
           label="Competitor Gap"
           value="34%"
-          trendLabel="keywords to capture"
-          icon={<Users className="h-5 w-5" />}
+          trendLabel="to capture"
+          icon={<Users className="h-4 sm:h-5 w-4 sm:w-5" />}
           variant="accent"
         />
       </div>
 
       {/* Tools Grid */}
       <div>
-        <h2 className="text-lg font-semibold text-text-primary mb-4">
+        <h2 className="text-base sm:text-lg font-semibold text-text-primary mb-3 sm:mb-4">
           Sales Tools
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Mobile: List view, Desktop: Grid view */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {salesTools.map((tool) => (
             <Link
               key={tool.id}
               href={`/projects/${projectId}/sales/${tool.href}`}
             >
               <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                <CardContent className="p-3 sm:p-4">
+                  {/* Mobile: Horizontal layout */}
+                  <div className="flex items-center gap-3 sm:block">
+                    <div className="h-10 w-10 sm:h-10 sm:w-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0 sm:mb-3">
                       <tool.icon className="h-5 w-5 text-accent" />
                     </div>
-                    {tool.status === "beta" && (
-                      <Badge variant="info">Beta</Badge>
-                    )}
-                  </div>
-                  <h3 className="font-medium text-text-primary mb-1">
-                    {tool.name}
-                  </h3>
-                  <p className="text-sm text-text-muted mb-3">
-                    {tool.description}
-                  </p>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-text-muted flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {tool.lastRun}
-                    </span>
-                    <ArrowRight className="h-4 w-4 text-text-muted" />
+                    
+                    <div className="flex-1 min-w-0 sm:block">
+                      <div className="flex items-center justify-between sm:justify-start gap-2 sm:mb-1">
+                        <h3 className="font-medium text-sm sm:text-base text-text-primary truncate">
+                          {tool.name}
+                        </h3>
+                        {tool.status === "beta" && (
+                          <Badge variant="info" className="text-[10px] sm:text-xs flex-shrink-0">Beta</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs sm:text-sm text-text-muted line-clamp-1 sm:line-clamp-2 sm:mb-3">
+                        {tool.description}
+                      </p>
+                      <div className="hidden sm:flex items-center justify-between text-xs">
+                        <span className="text-text-muted flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {tool.lastRun}
+                        </span>
+                        <ArrowRight className="h-4 w-4 text-text-muted" />
+                      </div>
+                    </div>
+                    
+                    {/* Mobile: Chevron */}
+                    <ChevronRight className="h-5 w-5 text-text-muted sm:hidden flex-shrink-0" />
                   </div>
                 </CardContent>
               </Card>
@@ -280,44 +291,46 @@ export default function SalesOverviewPage() {
 
       {/* Recent Activity */}
       <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
+        <CardHeader className="pb-2 sm:pb-4">
+          <CardTitle className="text-base sm:text-lg">Recent Activity</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
+        <CardContent className="pt-0">
+          <div className="space-y-2 sm:space-y-3">
             {recentActivity.map((activity) => (
               <div
                 key={activity.id}
-                className="flex items-start gap-3 p-3 rounded-lg bg-bg-elevated"
+                className="flex items-start gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-lg bg-bg-elevated"
               >
                 <div
                   className={cn(
-                    "h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0",
+                    "h-7 w-7 sm:h-8 sm:w-8 rounded-full flex items-center justify-center flex-shrink-0",
                     activity.status === "success" && "bg-success/10",
                     activity.status === "warning" && "bg-warning/10",
                     activity.status === "running" && "bg-info/10"
                   )}
                 >
                   {activity.status === "success" && (
-                    <CheckCircle className="h-4 w-4 text-success" />
+                    <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-success" />
                   )}
                   {activity.status === "warning" && (
-                    <AlertTriangle className="h-4 w-4 text-warning" />
+                    <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-warning" />
                   )}
                   {activity.status === "running" && (
-                    <Clock className="h-4 w-4 text-info animate-pulse" />
+                    <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-info animate-pulse" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium text-sm text-text-primary">
+                    <p className="font-medium text-xs sm:text-sm text-text-primary truncate">
                       {activity.action}
                     </p>
-                    <span className="text-xs text-text-muted whitespace-nowrap">
+                    <span className="text-[10px] sm:text-xs text-text-muted whitespace-nowrap">
                       {activity.time}
                     </span>
                   </div>
-                  <p className="text-sm text-text-secondary">{activity.details}</p>
+                  <p className="text-xs sm:text-sm text-text-secondary truncate sm:whitespace-normal">
+                    {activity.details}
+                  </p>
                 </div>
               </div>
             ))}

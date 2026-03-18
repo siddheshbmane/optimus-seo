@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { TopNav } from "@/components/layout/top-nav";
+import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 
 export default function AppLayout({
   children,
@@ -26,12 +27,17 @@ export default function AppLayout({
   return (
     <div className="min-h-screen bg-bg-page">
       <TopNav onCommandPaletteOpen={() => setCommandPaletteOpen(true)} />
-      <main>{children}</main>
       
-      {/* Command Palette Modal - TODO: Implement full version */}
+      {/* Main content with bottom padding for mobile nav */}
+      <main className="pb-20 md:pb-0">{children}</main>
+      
+      {/* Mobile Bottom Navigation */}
+      <MobileBottomNav />
+      
+      {/* Command Palette Modal */}
       {commandPaletteOpen && (
         <div 
-          className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center pt-[20vh]"
+          className="fixed inset-0 z-[70] bg-black/50 flex items-start justify-center pt-[10vh] sm:pt-[20vh] px-4"
           onClick={() => setCommandPaletteOpen(false)}
         >
           <div 
@@ -45,14 +51,17 @@ export default function AppLayout({
               <input
                 type="text"
                 placeholder="Search projects, keywords, actions..."
-                className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none"
+                className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none text-base"
                 autoFocus
               />
-              <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-bg-elevated border border-border rounded text-text-muted">
+              <button 
+                onClick={() => setCommandPaletteOpen(false)}
+                className="px-2 py-1 text-xs font-mono bg-bg-elevated border border-border rounded text-text-muted hover:text-text-primary"
+              >
                 ESC
-              </kbd>
+              </button>
             </div>
-            <div className="p-2 text-sm text-text-muted text-center py-8">
+            <div className="p-4 text-sm text-text-muted text-center py-8">
               Start typing to search...
             </div>
           </div>
