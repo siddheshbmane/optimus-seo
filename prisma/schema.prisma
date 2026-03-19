@@ -227,8 +227,9 @@ model Session {
 }
 
 // Better Auth Verification table (for magic links, email verification, etc.)
+// Note: Better Auth expects string IDs, not UUIDs
 model Verification {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id         String   @id
   identifier String   @db.VarChar(255)  // email or other identifier
   value      String   @db.Text          // verification token
   expiresAt  DateTime
