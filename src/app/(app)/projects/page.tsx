@@ -19,16 +19,77 @@ import {
   CheckCircle,
   ChevronRight,
   X,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { mockProjects, type Project } from "@/data/mock-projects";
+import { mockProjects, type Project as MockProject } from "@/data/mock-projects";
+import { useProjects, type Project as DBProject } from "@/hooks/use-projects";
 import { formatNumber, getHealthScoreColor, cn } from "@/lib/utils";
 
 type ViewMode = "grid" | "list";
-type StatusFilter = "all" | "active" | "paused" | "completed";
+type StatusFilter = "all" | "active" | "paused" | "completed" | "created";
+
+// Unified project type for display
+interface DisplayProject {
+  id: string;
+  name: string;
+  url: string;
+  status: "active" | "paused" | "completed" | "created";
+  healthScore: number;
+  keywords: number;
+  backlinks: number;
+  traffic: number;
+  trafficTrend: number;
+  agents: { running: number; total: number };
+}
+
+// Convert DB project to display format
+function toDisplayProject(project: DBProject): DisplayProject {
+  // Map DB status to display status
+  const statusMap: Record<string, "active" | "paused" | "completed" | "created"> = {
+    created: "created",
+    sales_phase: "active",
+    strategy_phase: "active",
+    execution_phase: "active",
+    reporting: "active",
+    completed: "completed",
+    paused: "paused",
+    archived: "completed",
+  };
+
+  return {
+    id: project.id,
+    name: project.name,
+    url: project.clientUrl,
+    status: statusMap[project.status] || "created",
+    healthScore: project.healthScore || 0,
+    keywords: 0, // Will be populated from related data
+    backlinks: 0,
+    traffic: 0,
+    trafficTrend: 0,
+    agents: { running: 0, total: 0 },
+  };
+}
+
+// Convert mock project to display format
+function mockToDisplayProject(project: MockProject): DisplayProject {
+  return {
+    id: project.id,
+    name: project.name,
+    url: project.url,
+    status: project.status,
+    healthScore: project.healthScore,
+    keywords: project.keywords,
+    backlinks: project.backlinks,
+    traffic: project.traffic,
+    trafficTrend: project.trafficTrend,
+    agents: { running: project.agents.running, total: project.agents.running + project.agents.completed + project.agents.failed },
+  };
+}
 
 export default function ProjectsPage() {
   const [viewMode, setViewMode] = React.useState<ViewMode>("grid");
@@ -36,7 +97,22 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
   const [showFilters, setShowFilters] = React.useState(false);
 
-  const filteredProjects = mockProjects.filter((project) => {
+  // Fetch real projects from API
+  const { projects: dbProjects, isLoading, error, refetch } = useProjects();
+
+  // Combine real projects with mock projects for demo
+  const allProjects: DisplayProject[] = React.useMemo(() => {
+    const realProjects = dbProjects.map(toDisplayProject);
+    // If we have real projects, show them first, then mock projects
+    // In production, you'd only show real projects
+    if (realProjects.length > 0) {
+      return [...realProjects, ...mockProjects.map(mockToDisplayProject)];
+    }
+    // Fallback to mock projects if no real projects
+    return mockProjects.map(mockToDisplayProject);
+  }, [dbProjects]);
+
+  const filteredProjects = allProjects.filter((project) => {
     const matchesSearch =
       project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       project.url.toLowerCase().includes(searchQuery.toLowerCase());
@@ -45,7 +121,7 @@ export default function ProjectsPage() {
     return matchesSearch && matchesStatus;
   });
 
-  const getStatusIcon = (status: Project["status"]) => {
+  const getStatusIcon = (status: DisplayProject["status"]) => {
     switch (status) {
       case "active":
         return <PlayCircle className="h-3.5 w-3.5" />;
@@ -53,10 +129,12 @@ export default function ProjectsPage() {
         return <Pause className="h-3.5 w-3.5" />;
       case "completed":
         return <CheckCircle className="h-3.5 w-3.5" />;
+      case "created":
+        return <Globe className="h-3.5 w-3.5" />;
     }
   };
 
-  const getStatusBadgeVariant = (status: Project["status"]) => {
+  const getStatusBadgeVariant = (status: DisplayProject["status"]) => {
     switch (status) {
       case "active":
         return "success";
@@ -64,6 +142,8 @@ export default function ProjectsPage() {
         return "warning";
       case "completed":
         return "neutral";
+      case "created":
+        return "info";
     }
   };
 
@@ -75,13 +155,35 @@ export default function ProjectsPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-text-primary">Projects</h1>
           <p className="text-sm sm:text-base text-text-secondary">
             Manage and monitor all your SEO projects
+            {dbProjects.length > 0 && (
+              <span className="ml-2 text-accent">({dbProjects.length} from database)</span>
+            )}
           </p>
         </div>
-        <Button variant="accent" className="w-full sm:w-auto">
-          <Plus className="h-4 w-4 mr-2" />
-          New Project
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="secondary" 
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isLoading}
+            className="hidden sm:flex"
+          >
+            <RefreshCw className={cn("h-4 w-4 mr-2", isLoading && "animate-spin")} />
+            Refresh
+          </Button>
+          <Button variant="accent" className="w-full sm:w-auto">
+            <Plus className="h-4 w-4 mr-2" />
+            New Project
+          </Button>
+        </div>
       </div>
+
+      {/* Error State */}
+      {error && (
+        <div className="p-4 rounded-lg bg-error/10 border border-error/20 text-error text-sm">
+          {error}. Showing demo projects instead.
+        </div>
+      )}
 
       {/* Filters Bar */}
       <div className="space-y-3">
@@ -317,7 +419,7 @@ export default function ProjectsPage() {
   );
 }
 
-function ProjectCard({ project, viewMode }: { project: Project; viewMode: ViewMode }) {
+function ProjectCard({ project, viewMode }: { project: DisplayProject; viewMode: ViewMode }) {
   return (
     <Link href={`/projects/${project.id}/sales`}>
       <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full">

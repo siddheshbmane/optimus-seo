@@ -26,9 +26,11 @@ import {
   X,
   ChevronRight,
   Home,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "next-themes";
+import { useSession, signOut } from "@/lib/auth/client";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -93,8 +95,42 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
   const [showNotifications, setShowNotifications] = React.useState(false);
   const [showProfile, setShowProfile] = React.useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const notificationRef = React.useRef<HTMLDivElement>(null);
   const profileRef = React.useRef<HTMLDivElement>(null);
+  
+  // Get session data
+  const { data: session, isPending: isSessionLoading } = useSession();
+  const user = session?.user;
+
+  // Get user initials
+  const getUserInitials = (name?: string | null, email?: string | null) => {
+    if (name) {
+      const parts = name.split(" ");
+      if (parts.length >= 2) {
+        return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+      }
+      return name.substring(0, 2).toUpperCase();
+    }
+    if (email) {
+      return email.substring(0, 2).toUpperCase();
+    }
+    return "U";
+  };
+
+  // Handle logout
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await signOut();
+      router.push("/login");
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      setIsLoggingOut(false);
+      setShowProfile(false);
+    }
+  };
 
   React.useEffect(() => {
     setMounted(true);
@@ -318,22 +354,32 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
 
             {/* Profile */}
             <div className="relative" ref={profileRef}>
-              <button
-                onClick={() => {
-                  setShowProfile(!showProfile);
-                  setShowNotifications(false);
-                }}
-                className="h-8 w-8 rounded-full bg-accent text-white text-sm font-medium flex items-center justify-center hover:ring-2 hover:ring-accent/50 transition-all"
-              >
-                RS
-              </button>
+              {isSessionLoading ? (
+                <div className="h-8 w-8 rounded-full bg-bg-elevated flex items-center justify-center">
+                  <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setShowProfile(!showProfile);
+                    setShowNotifications(false);
+                  }}
+                  className="h-8 w-8 rounded-full bg-accent text-white text-sm font-medium flex items-center justify-center hover:ring-2 hover:ring-accent/50 transition-all"
+                >
+                  {getUserInitials(user?.name, user?.email)}
+                </button>
+              )}
 
               {/* Profile Dropdown */}
               {showProfile && (
                 <div className="absolute right-0 mt-2 w-56 bg-bg-card border border-border rounded-lg shadow-xl z-50">
                   <div className="p-3 border-b border-border">
-                    <p className="font-medium text-text-primary">Rahul Sharma</p>
-                    <p className="text-sm text-text-muted truncate">rahul@optimusseo.com</p>
+                    <p className="font-medium text-text-primary">
+                      {user?.name || "User"}
+                    </p>
+                    <p className="text-sm text-text-muted truncate">
+                      {user?.email || "No email"}
+                    </p>
                   </div>
                   <div className="py-1">
                     <button
@@ -368,14 +414,16 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
                   </div>
                   <div className="py-1 border-t border-border">
                     <button
-                      onClick={() => {
-                        setShowProfile(false);
-                        router.push("/login");
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error/10 transition-colors"
+                      onClick={handleLogout}
+                      disabled={isLoggingOut}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error/10 transition-colors disabled:opacity-50"
                     >
-                      <LogOut className="h-4 w-4" />
-                      Sign out
+                      {isLoggingOut ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <LogOut className="h-4 w-4" />
+                      )}
+                      {isLoggingOut ? "Signing out..." : "Sign out"}
                     </button>
                   </div>
                 </div>
@@ -449,15 +497,34 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
 
             {/* User Info */}
             <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border bg-bg-elevated">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 mb-3">
                 <div className="h-10 w-10 rounded-full bg-accent text-white text-sm font-medium flex items-center justify-center">
-                  RS
+                  {getUserInitials(user?.name, user?.email)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-text-primary truncate">Rahul Sharma</p>
-                  <p className="text-sm text-text-muted truncate">rahul@optimusseo.com</p>
+                  <p className="font-medium text-text-primary truncate">
+                    {user?.name || "User"}
+                  </p>
+                  <p className="text-sm text-text-muted truncate">
+                    {user?.email || "No email"}
+                  </p>
                 </div>
               </div>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  handleLogout();
+                }}
+                disabled={isLoggingOut}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-error bg-error/10 hover:bg-error/20 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {isLoggingOut ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <LogOut className="h-4 w-4" />
+                )}
+                {isLoggingOut ? "Signing out..." : "Sign out"}
+              </button>
             </div>
           </div>
         </div>
