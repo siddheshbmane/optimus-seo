@@ -168,14 +168,14 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
         <div className="flex h-full items-center justify-between px-3 sm:px-4">
           {/* Left side - Logo and Nav */}
           <div className="flex items-center gap-2 sm:gap-6">
-            {/* Logo */}
+            {/* Logo - minimal on mobile */}
             <Link href="/dashboard" className="flex items-center gap-2">
               <svg
-                width="20"
-                height="20"
+                width="24"
+                height="24"
                 viewBox="0 0 24 24"
                 fill="none"
-                className="text-accent"
+                className="text-accent sm:w-5 sm:h-5"
               >
                 <path
                   d="M4 4L12 20L20 4"

@@ -752,7 +752,7 @@ export default function AgentsPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">

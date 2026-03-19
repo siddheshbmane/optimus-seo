@@ -37,7 +37,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = React.useState("profile");
 
   return (
-    <div className="p-4 sm:p-6">
+    <div className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-6 sm:mb-8">

@@ -49,7 +49,8 @@
   
   /* === LAYOUT === */
   --topnav-height: 48px;
-  --projectbar-height: 44px;
+  --projectbar-height: 44px; /* Single row: project name + tabs */
+  --projectbar-height-mobile: 76px; /* Two rows on mobile: header + pill tabs */
   --mobile-topbar-height: 56px;
   --mobile-bottombar-height: 83px;
 }
@@ -193,6 +194,16 @@ h1, h2, h3, h4, h5, h6 {
 
 .animate-skeleton {
   animation: skeleton-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* === SCROLLBAR HIDE UTILITY === */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
 }
 
 /* === CHART COLORS (for Recharts) === */

@@ -177,34 +177,36 @@ export default function ExecutionOverviewPage() {
   const totalCompleted = executionTools.reduce((sum, t) => sum + t.tasksCompleted, 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Execution</h1>
-          <p className="text-text-secondary">
+          <h1 className="text-xl sm:text-2xl font-bold text-text-primary">Execution</h1>
+          <p className="text-sm sm:text-base text-text-secondary">
             AI agents working on your SEO tasks
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary">
-            <Pause className="h-4 w-4 mr-2" />
-            Pause All
+          <Button variant="secondary" size="sm" className="text-xs sm:text-sm">
+            <Pause className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Pause All</span>
+            <span className="sm:hidden">Pause</span>
           </Button>
-          <Button variant="accent">
-            <Sparkles className="h-4 w-4 mr-2" />
-            Run All Agents
+          <Button variant="accent" size="sm" className="text-xs sm:text-sm">
+            <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Run All Agents</span>
+            <span className="sm:hidden">Run All</span>
           </Button>
         </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Quick Stats - 2x2 on mobile */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
           label="Tasks Running"
           value={totalRunning}
           trendLabel="across all agents"
-          icon={<PlayCircle className="h-5 w-5" />}
+          icon={<PlayCircle className="h-4 sm:h-5 w-4 sm:w-5" />}
           variant="accent"
         />
         <StatCard
@@ -212,30 +214,30 @@ export default function ExecutionOverviewPage() {
           value={totalCompleted}
           trend={24}
           trendLabel="this week"
-          icon={<CheckCircle className="h-5 w-5" />}
+          icon={<CheckCircle className="h-4 sm:h-5 w-4 sm:w-5" />}
         />
         <StatCard
           label="Content Written"
           value="45"
           trend={12}
           trendLabel="pieces this month"
-          icon={<PenTool className="h-5 w-5" />}
+          icon={<PenTool className="h-4 sm:h-5 w-4 sm:w-5" />}
         />
         <StatCard
           label="Links Built"
           value="23"
           trend={8}
           trendLabel="this month"
-          icon={<Link2 className="h-5 w-5" />}
+          icon={<Link2 className="h-4 sm:h-5 w-4 sm:w-5" />}
         />
       </div>
 
       {/* Agent Cards */}
       <div>
-        <h2 className="text-lg font-semibold text-text-primary mb-4">
+        <h2 className="text-base sm:text-lg font-semibold text-text-primary mb-3 sm:mb-4">
           Execution Agents
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
           {executionTools.map((tool) => (
             <Link
               key={tool.id}

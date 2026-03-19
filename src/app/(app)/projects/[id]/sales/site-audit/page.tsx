@@ -1372,49 +1372,57 @@ export default function SiteAuditPage() {
     );
   };
 
+  // Sticky offset: topnav + projectbar (using CSS variables)
+  
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Technical SEO Audit</h1>
-          <p className="text-text-secondary">
-            Last crawled {new Date(mockCrawlSummary.lastCrawl).toLocaleDateString()} • {formatNumber(mockCrawlSummary.crawledPages)} pages analyzed
-          </p>
+    <div className="space-y-3 sm:space-y-4">
+      {/* Sticky Header + Tabs Container - Flush with ProjectBar (negative margins to break out of layout padding) */}
+      <div className="-mx-3 sm:-mx-4 lg:-mx-6 -mt-3 sm:-mt-4 sticky top-[calc(var(--topnav-height)+var(--projectbar-height-mobile))] sm:top-[calc(var(--topnav-height)+var(--projectbar-height))] z-30 bg-bg-card border-b border-border">
+        {/* Header Row - Compact */}
+        <div className="flex items-center justify-between px-3 sm:px-4 lg:px-6 py-1.5 sm:py-2 border-b border-border">
+          <div className="min-w-0">
+            <h1 className="text-sm sm:text-base font-semibold text-text-primary truncate">Technical SEO Audit</h1>
+            <p className="text-[10px] sm:text-xs text-text-muted">
+              {new Date(mockCrawlSummary.lastCrawl).toLocaleDateString()} • {formatNumber(mockCrawlSummary.crawledPages)} pages
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowFixExport(true)}>
+              <Download className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1">Export</span>
+            </Button>
+            <Button variant="accent" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowRecrawlModal(true)}>
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1">Re-crawl</span>
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => setShowFixExport(true)}>
-            <Download className="h-4 w-4 mr-2" />
-            Export Report
-          </Button>
-          <Button variant="accent" onClick={() => setShowRecrawlModal(true)}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Re-crawl Site
-          </Button>
+
+        {/* Tabs - Scrollable on mobile */}
+        <div className="flex items-center gap-0 sm:gap-0.5 px-3 sm:px-4 lg:px-6 overflow-x-auto scrollbar-hide">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "flex items-center gap-1 px-2.5 sm:px-3 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+                activeTab === tab.id
+                  ? "text-text-primary border-accent"
+                  : "text-text-secondary border-transparent hover:text-text-primary hover:border-border"
+              )}
+            >
+              <span className="[&>svg]:h-3.5 [&>svg]:w-3.5 sm:[&>svg]:h-4 sm:[&>svg]:w-4">{tab.icon}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
+            </button>
+          ))}
         </div>
       </div>
-
-      {/* Tabs */}
-      <div className="flex items-center gap-1 p-1 bg-bg-elevated rounded-lg w-fit overflow-x-auto">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
-              activeTab === tab.id
-                ? "bg-bg-primary text-text-primary shadow-sm"
-                : "text-text-muted hover:text-text-primary"
-            )}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
+      
+      {/* Content - no extra padding needed, layout handles it */}
+      <div className="space-y-3 sm:space-y-4">
+        {/* Tab Content */}
+        {renderTabContent()}
       </div>
-
-      {/* Tab Content */}
-      {renderTabContent()}
 
       {/* Page Detail Modal */}
       <Modal

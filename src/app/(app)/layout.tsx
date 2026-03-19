@@ -28,7 +28,7 @@ export default function AppLayout({
     <div className="min-h-screen bg-bg-page">
       <TopNav onCommandPaletteOpen={() => setCommandPaletteOpen(true)} />
       
-      {/* Main content with bottom padding for mobile nav */}
+      {/* Main content - individual pages/layouts handle their own padding, pb-20 for mobile bottom nav clearance */}
       <main className="pb-20 md:pb-0">{children}</main>
       
       {/* Mobile Bottom Navigation */}

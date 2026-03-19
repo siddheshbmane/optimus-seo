@@ -166,29 +166,31 @@ export default function ReportsOverviewPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Reports</h1>
-          <p className="text-text-secondary">
+          <h1 className="text-xl sm:text-2xl font-bold text-text-primary">Reports</h1>
+          <p className="text-sm sm:text-base text-text-secondary">
             Track performance and generate client reports
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => setShowScheduleModal(true)}>
-            <Calendar className="h-4 w-4 mr-2" />
-            Schedule Report
+          <Button variant="secondary" size="sm" className="text-xs sm:text-sm" onClick={() => setShowScheduleModal(true)}>
+            <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Schedule Report</span>
+            <span className="sm:hidden">Schedule</span>
           </Button>
-          <Button variant="accent" onClick={() => setShowGenerateModal(true)}>
-            <FileText className="h-4 w-4 mr-2" />
-            Generate Report
+          <Button variant="accent" size="sm" className="text-xs sm:text-sm" onClick={() => setShowGenerateModal(true)}>
+            <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Generate Report</span>
+            <span className="sm:hidden">Generate</span>
           </Button>
         </div>
       </div>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Key Metrics - 2x2 on mobile */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {keyMetrics.map((metric) => (
           <Card key={metric.label}>
             <CardContent className="p-4">

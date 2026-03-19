@@ -155,59 +155,59 @@ export default function StrategyOverviewPage() {
   if (!project) return null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Strategy</h1>
-          <p className="text-text-secondary">
+          <h1 className="text-xl sm:text-2xl font-bold text-text-primary">Strategy</h1>
+          <p className="text-sm sm:text-base text-text-secondary">
             Plan and organize your SEO content strategy
           </p>
         </div>
-        <Button variant="accent">
+        <Button variant="accent" className="w-full sm:w-auto">
           <Sparkles className="h-4 w-4 mr-2" />
           Generate Strategy
         </Button>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Quick Stats - 2x2 on mobile */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
           label="Target Keywords"
           value="156"
           trend={12}
           trendLabel="this month"
-          icon={<Target className="h-5 w-5" />}
+          icon={<Target className="h-4 sm:h-5 w-4 sm:w-5" />}
         />
         <StatCard
           label="Content Planned"
           value="24"
           trend={8}
           trendLabel="pieces"
-          icon={<FileText className="h-5 w-5" />}
+          icon={<FileText className="h-4 sm:h-5 w-4 sm:w-5" />}
         />
         <StatCard
           label="Topic Clusters"
           value="8"
           trendLabel="active clusters"
-          icon={<Layers className="h-5 w-5" />}
+          icon={<Layers className="h-4 sm:h-5 w-4 sm:w-5" />}
         />
         <StatCard
           label="Content Score"
           value="78/100"
           trend={5}
           trendLabel="vs last month"
-          icon={<TrendingUp className="h-5 w-5" />}
+          icon={<TrendingUp className="h-4 sm:h-5 w-4 sm:w-5" />}
           variant="accent"
         />
       </div>
 
       {/* Tools Grid */}
       <div>
-        <h2 className="text-lg font-semibold text-text-primary mb-4">
+        <h2 className="text-base sm:text-lg font-semibold text-text-primary mb-3 sm:mb-4">
           Strategy Tools
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {strategyTools.map((tool) => (
             <Link
               key={tool.id}

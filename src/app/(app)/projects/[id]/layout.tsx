@@ -32,7 +32,8 @@ export default function ProjectLayout({
             : { label: "Completed", variant: "neutral" }
         }
       />
-      <div className="p-3 sm:p-4 md:p-6">{children}</div>
+      {/* Content wrapper with consistent padding */}
+      <div className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4">{children}</div>
     </div>
   );
 }

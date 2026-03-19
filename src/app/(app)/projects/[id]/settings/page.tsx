@@ -84,11 +84,11 @@ export default function SettingsPage() {
   if (!project) return null;
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-4 sm:space-y-6 max-w-4xl">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-text-primary">Project Settings</h1>
-        <p className="text-text-secondary">
+        <h1 className="text-xl sm:text-2xl font-bold text-text-primary">Project Settings</h1>
+        <p className="text-sm sm:text-base text-text-secondary">
           Manage your project configuration and integrations
         </p>
       </div>
