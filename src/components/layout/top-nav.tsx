@@ -22,10 +22,6 @@ import {
   CheckCircle,
   AlertCircle,
   Clock,
-  Menu,
-  X,
-  ChevronRight,
-  Home,
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -94,7 +90,6 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
   const [mounted, setMounted] = React.useState(false);
   const [showNotifications, setShowNotifications] = React.useState(false);
   const [showProfile, setShowProfile] = React.useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const notificationRef = React.useRef<HTMLDivElement>(null);
   const profileRef = React.useRef<HTMLDivElement>(null);
@@ -149,23 +144,6 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Close mobile menu on route change
-  React.useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
-
-  // Prevent body scroll when mobile menu is open
-  React.useEffect(() => {
-    if (mobileMenuOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [mobileMenuOpen]);
-
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard";
     return pathname.startsWith(href);
@@ -190,14 +168,6 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
         <div className="flex h-full items-center justify-between px-3 sm:px-4">
           {/* Left side - Logo and Nav */}
           <div className="flex items-center gap-2 sm:gap-6">
-            {/* Mobile Menu Button */}
-            <button
-              className="md:hidden p-2 -ml-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-elevated"
-              onClick={() => setMobileMenuOpen(true)}
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-
             {/* Logo */}
             <Link href="/dashboard" className="flex items-center gap-2">
               <svg
@@ -432,103 +402,6 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
           </div>
         </div>
       </header>
-
-      {/* Mobile Menu Overlay */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[60] md:hidden">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setMobileMenuOpen(false)}
-          />
-          
-          {/* Menu Panel */}
-          <div className="absolute left-0 top-0 bottom-0 w-[280px] bg-bg-card border-r border-border shadow-xl animate-in slide-in-from-left duration-200">
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-border">
-              <Link href="/dashboard" className="flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  className="text-accent"
-                >
-                  <path
-                    d="M4 4L12 20L20 4"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span className="font-mono font-bold text-text-primary">
-                  Optimus SEO
-                </span>
-              </Link>
-              <button
-                className="p-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-elevated"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Navigation */}
-            <nav className="p-4 space-y-1">
-              {navItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-3 text-base rounded-lg transition-colors",
-                    isActive(item.href)
-                      ? "text-text-primary font-medium bg-accent/10 text-accent"
-                      : "text-text-secondary hover:text-text-primary hover:bg-bg-elevated"
-                  )}
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  <item.icon className="h-5 w-5" />
-                  {item.label}
-                  <ChevronRight className="h-4 w-4 ml-auto opacity-50" />
-                </Link>
-              ))}
-            </nav>
-
-            {/* User Info */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border bg-bg-elevated">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="h-10 w-10 rounded-full bg-accent text-white text-sm font-medium flex items-center justify-center">
-                  {getUserInitials(user?.name, user?.email)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-text-primary truncate">
-                    {user?.name || "User"}
-                  </p>
-                  <p className="text-sm text-text-muted truncate">
-                    {user?.email || "No email"}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  handleLogout();
-                }}
-                disabled={isLoggingOut}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-error bg-error/10 hover:bg-error/20 rounded-lg transition-colors disabled:opacity-50"
-              >
-                {isLoggingOut ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <LogOut className="h-4 w-4" />
-                )}
-                {isLoggingOut ? "Signing out..." : "Sign out"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
