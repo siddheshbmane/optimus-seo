@@ -226,6 +226,19 @@ model Session {
   @@index([expiresAt], name: "idx_session_expires")
 }
 
+// Better Auth Verification table (for magic links, email verification, etc.)
+model Verification {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  identifier String   @db.VarChar(255)  // email or other identifier
+  value      String   @db.Text          // verification token
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier], name: "idx_verification_identifier")
+  @@index([value], name: "idx_verification_value")
+}
+
 model ApiKey {
   id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId  String      @db.Uuid
