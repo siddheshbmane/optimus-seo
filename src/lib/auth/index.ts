@@ -3,10 +3,12 @@
  * 
  * This module configures authentication for Optimus SEO using Better Auth.
  * Supports:
- * - Magic link (passwordless) authentication
+ * - Magic link (passwordless) authentication via Nodemailer
+ * - Email/Password authentication
  * - Google OAuth
  * - Organization-based multi-tenancy
  * - Role-based access control
+ * - Demo bypass mode for testing
  * 
  * @see https://www.better-auth.com/docs
  */
@@ -15,6 +17,61 @@ import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { organization, magicLink } from 'better-auth/plugins'
 import { prisma } from '@/lib/db'
+import nodemailer from 'nodemailer'
+
+// Check if demo mode is enabled
+export const DEMO_MODE = process.env.DEMO_MODE === 'true'
+export const DEMO_EMAIL = 'demo@optimus-seo.com'
+export const DEMO_PASSWORD = 'demo123'
+
+// Create Nodemailer transporter
+const createTransporter = () => {
+  // Use SMTP settings from environment
+  if (process.env.SMTP_HOST) {
+    return nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    })
+  }
+  
+  // Use Gmail if configured
+  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+    })
+  }
+  
+  // Fallback: Use Ethereal for testing (emails go to ethereal.email)
+  return null
+}
+
+const transporter = createTransporter()
+
+// Send email function
+async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
+  if (!transporter) {
+    console.log(`\n📧 Email would be sent to: ${to}`)
+    console.log(`Subject: ${subject}`)
+    console.log(`Content: ${html}\n`)
+    return
+  }
+  
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM || 'Optimus SEO <noreply@optimus-seo.com>',
+    to,
+    subject,
+    html,
+  })
+}
 
 export const auth = betterAuth({
   // Database adapter
@@ -22,9 +79,11 @@ export const auth = betterAuth({
     provider: 'postgresql',
   }),
   
-  // Email & Password disabled - we use magic links
+  // Email & Password enabled for demo mode and regular signup
   emailAndPassword: {
-    enabled: false,
+    enabled: true,
+    // Auto sign-in after signup
+    autoSignIn: true,
   },
   
   // Session configuration
@@ -50,15 +109,32 @@ export const auth = betterAuth({
     // Magic link authentication
     magicLink({
       sendMagicLink: async ({ email, url }) => {
-        // In development, log the magic link
-        if (process.env.NODE_ENV === 'development') {
+        // In development without SMTP, log the magic link
+        if (process.env.NODE_ENV === 'development' && !transporter) {
           console.log(`\n🔗 Magic Link for ${email}:\n${url}\n`)
           return
         }
         
-        // In production, send via Resend
-        // TODO: Implement Resend integration
-        console.log(`Sending magic link to ${email}`)
+        // Send via Nodemailer
+        await sendEmail({
+          to: email,
+          subject: 'Sign in to Optimus SEO',
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #FD8C73;">Optimus SEO</h2>
+              <p>Click the button below to sign in to your account:</p>
+              <a href="${url}" style="display: inline-block; background: #FD8C73; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 16px 0;">
+                Sign In
+              </a>
+              <p style="color: #666; font-size: 14px;">
+                This link expires in 10 minutes. If you didn't request this, you can safely ignore this email.
+              </p>
+              <p style="color: #666; font-size: 14px;">
+                Or copy this link: ${url}
+              </p>
+            </div>
+          `,
+        })
       },
     }),
     

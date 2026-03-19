@@ -3,10 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, User, ArrowRight, Sparkles, Check } from "lucide-react";
+import { Mail, Lock, User, ArrowRight, Sparkles, Check, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { signIn, signUp } from "@/lib/auth/client";
 
 const features = [
   "AI-powered SEO analysis",
@@ -15,19 +16,93 @@ const features = [
   "Unlimited projects",
 ];
 
+// Check if demo mode is enabled
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
 export default function SignupPage() {
   const router = useRouter();
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [isLoading, setIsLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate signup
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    router.push("/onboarding");
+    setError("");
+    
+    try {
+      // Use Better Auth signup
+      const result = await signUp.email({
+        email,
+        password,
+        name,
+      });
+      
+      if (result.error) {
+        setError(result.error.message || "Failed to create account");
+      } else {
+        router.push("/dashboard");
+      }
+    } catch (err) {
+      setError("An error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle demo login
+  const handleDemoLogin = async () => {
+    setIsLoading(true);
+    setError("");
+    
+    try {
+      const response = await fetch("/api/auth/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        router.push(data.redirectTo || "/dashboard");
+      } else {
+        setError(data.error || "Demo login failed");
+      }
+    } catch (err) {
+      setError("Failed to connect. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle Google OAuth
+  const handleGoogleSignup = async () => {
+    setIsLoading(true);
+    try {
+      await signIn.social({
+        provider: "google",
+        callbackURL: "/dashboard",
+      });
+    } catch (err) {
+      setError("Failed to sign up with Google");
+      setIsLoading(false);
+    }
+  };
+
+  // Handle GitHub OAuth
+  const handleGitHubSignup = async () => {
+    setIsLoading(true);
+    try {
+      await signIn.social({
+        provider: "github",
+        callbackURL: "/dashboard",
+      });
+    } catch (err) {
+      setError("Failed to sign up with GitHub");
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -78,12 +153,45 @@ export default function SignupPage() {
               </Link>
             </div>
 
+            {/* Demo Mode Banner */}
+            {DEMO_MODE && (
+              <div className="mb-6 p-4 rounded-lg bg-accent/10 border border-accent/20">
+                <div className="flex items-center gap-2 mb-2">
+                  <Zap className="h-5 w-5 text-accent" />
+                  <span className="font-semibold text-text-primary">Try Demo Mode</span>
+                </div>
+                <p className="text-sm text-text-secondary mb-3">
+                  Skip signup and explore Optimus SEO instantly.
+                </p>
+                <Button
+                  variant="accent"
+                  className="w-full"
+                  onClick={handleDemoLogin}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Loading..." : (
+                    <>
+                      <Zap className="h-4 w-4 mr-2" />
+                      Enter Demo Mode
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+
             <h1 className="text-xl font-semibold text-text-primary mb-2">
               Create your account
             </h1>
             <p className="text-text-secondary mb-6">
               Start your 14-day free trial. No credit card required.
             </p>
+
+            {/* Error Message */}
+            {error && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
@@ -170,7 +278,12 @@ export default function SignupPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Button variant="secondary" className="w-full">
+              <Button 
+                variant="secondary" 
+                className="w-full"
+                onClick={handleGoogleSignup}
+                disabled={isLoading}
+              >
                 <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24">
                   <path
                     fill="currentColor"
@@ -191,7 +304,12 @@ export default function SignupPage() {
                 </svg>
                 Google
               </Button>
-              <Button variant="secondary" className="w-full">
+              <Button 
+                variant="secondary" 
+                className="w-full"
+                onClick={handleGitHubSignup}
+                disabled={isLoading}
+              >
                 <svg
                   className="h-4 w-4 mr-2"
                   fill="currentColor"
