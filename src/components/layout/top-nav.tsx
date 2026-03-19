@@ -324,7 +324,7 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
 
             {/* Profile */}
             <div className="relative" ref={profileRef}>
-              {isSessionLoading ? (
+              {!mounted || isSessionLoading ? (
                 <div className="h-8 w-8 rounded-full bg-bg-elevated flex items-center justify-center">
                   <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
                 </div>
