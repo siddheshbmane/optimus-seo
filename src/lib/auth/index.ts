@@ -166,6 +166,39 @@ export const auth = betterAuth({
     max: 10, // 10 requests per minute
   },
   
+  // Auto-create organization for new users
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          try {
+            // Check if user already has an org (e.g., demo user)
+            const existingUser = await prisma.user.findUnique({
+              where: { id: user.id },
+              select: { organizationId: true },
+            })
+            if (existingUser?.organizationId) return
+
+            // Create a personal organization
+            const org = await prisma.organization.create({
+              data: {
+                name: `${user.name || 'My'}'s Organization`,
+                slug: `org-${user.id.slice(0, 8)}`,
+              },
+            })
+            // Link user to the organization
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { organizationId: org.id },
+            })
+          } catch (error) {
+            console.error('Failed to auto-create organization:', error)
+          }
+        },
+      },
+    },
+  },
+
   // Advanced options
   advanced: {
     // Use secure cookies in production

@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { llmClient } from '@/lib/llm/client';
+import { requireAuth } from '@/lib/api/auth';
 
 type SEOAction = 
   | 'analyze'
@@ -20,6 +21,7 @@ interface RequestBody {
 
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth();
     const body: RequestBody = await request.json();
     const { action, params } = body;
 
@@ -48,13 +50,24 @@ export async function POST(request: NextRequest) {
         );
         break;
 
-      case 'generateContent':
+      case 'generateContent': {
+        // Coerce keywords: accept string, string[], or undefined
+        let keywords: string[] = [];
+        if (Array.isArray(params.keywords)) {
+          keywords = params.keywords as string[];
+        } else if (typeof params.keywords === 'string') {
+          keywords = [params.keywords as string];
+        } else if (typeof params.keyword === 'string') {
+          keywords = [params.keyword as string];
+        }
+
         result = await llmClient.generateContent(
-          params.topic as string,
-          params.keywords as string[],
-          params.contentType as 'blog' | 'product' | 'landing' | 'meta'
+          (params.topic as string) || 'General SEO',
+          keywords,
+          (params.contentType as 'blog' | 'product' | 'landing' | 'meta') || 'blog'
         );
         break;
+      }
 
       case 'analyzeContent':
         result = await llmClient.analyzeContent(
@@ -71,12 +84,20 @@ export async function POST(request: NextRequest) {
         );
         break;
 
-      case 'suggestKeywords':
+      case 'suggestKeywords': {
+        let existingKw: string[] | undefined;
+        if (Array.isArray(params.existingKeywords)) {
+          existingKw = params.existingKeywords as string[];
+        } else if (typeof params.existingKeywords === 'string') {
+          existingKw = [params.existingKeywords as string];
+        }
+
         result = await suggestKeywords(
           params.topic as string,
-          params.existingKeywords as string[] | undefined
+          existingKw
         );
         break;
+      }
 
       case 'competitorAnalysis':
         result = await analyzeCompetitor(
@@ -102,6 +123,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ result });
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error('SEO LLM API error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
@@ -141,7 +163,7 @@ async function suggestKeywords(
   const systemPrompt = `You are a keyword research specialist. Suggest relevant keywords 
 based on search intent and semantic relationships.
 
-${existingKeywords ? `Existing keywords: ${existingKeywords.join(', ')}` : ''}
+${Array.isArray(existingKeywords) && existingKeywords.length > 0 ? `Existing keywords: ${existingKeywords.join(', ')}` : ''}
 
 For each keyword suggestion, provide:
 1. The keyword

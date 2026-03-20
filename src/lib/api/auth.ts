@@ -2,12 +2,16 @@
  * API Authentication Utilities
  * 
  * Helpers for authenticating API requests and checking permissions.
+ * In development mode, provides a mock session for testing without auth.
  */
 
 import { headers } from 'next/headers'
 import { auth, hasPermission, type Role } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { errors } from './response'
+
+// Check if we're in development mode
+const isDevelopment = process.env.NODE_ENV === 'development'
 
 // Session with user and organization info
 export interface AuthSession {
@@ -21,9 +25,22 @@ export interface AuthSession {
   organizationId: string
 }
 
+// Mock session for development (UUIDs must match prisma/seed.ts)
+const MOCK_DEV_SESSION: AuthSession = {
+  user: {
+    id: '00000000-0000-0000-0000-000000000002',
+    email: 'dev@optimus-seo.local',
+    name: 'Development User',
+    role: 'owner' as Role,
+    organizationId: '00000000-0000-0000-0000-000000000001',
+  },
+  organizationId: '00000000-0000-0000-0000-000000000001',
+}
+
 /**
  * Get the current authenticated session from the request
  * Returns null if not authenticated
+ * In development mode, returns a mock session if no real session exists
  */
 export async function getSession(): Promise<AuthSession | null> {
   try {
@@ -32,6 +49,46 @@ export async function getSession(): Promise<AuthSession | null> {
     })
 
     if (!session?.user) {
+      // In development, return mock session for easier testing
+      if (isDevelopment) {
+        console.log('[Dev Mode] Using mock session for API request')
+        return MOCK_DEV_SESSION
+      }
+      // In demo mode, try direct DB session lookup as fallback
+      if (process.env.DEMO_MODE === 'true') {
+        try {
+          const headersList = await headers()
+          const cookieHeader = headersList.get('cookie') || ''
+          // Look for Better Auth's cookie format
+          const sessionToken = cookieHeader
+            .split(';')
+            .map(c => c.trim())
+            .find(c => c.startsWith('optimus.session_token='))
+            ?.split('=')[1]
+
+          if (sessionToken) {
+            const dbSession = await prisma.session.findUnique({
+              where: { token: sessionToken },
+              include: { user: true },
+            })
+            if (dbSession && dbSession.expiresAt > new Date() && dbSession.user) {
+              return {
+                user: {
+                  id: dbSession.user.id,
+                  email: dbSession.user.email,
+                  name: dbSession.user.name,
+                  role: (dbSession.user.role || 'executive') as Role,
+                  organizationId: dbSession.user.organizationId || '',
+                },
+                organizationId: dbSession.user.organizationId || '',
+              }
+            }
+          }
+        } catch (demoError) {
+          console.error('[Demo Mode] Direct session lookup failed:', demoError)
+        }
+      }
+
       return null
     }
 
@@ -48,6 +105,16 @@ export async function getSession(): Promise<AuthSession | null> {
     })
 
     if (!user) {
+      // In development, return mock session if user not found in DB
+      if (isDevelopment) {
+        console.log('[Dev Mode] User not found in DB, using mock session')
+        return MOCK_DEV_SESSION
+      }
+      return null
+    }
+
+    if (!user.organizationId) {
+      // User exists but has no org yet (signup hook may not have completed)
       return null
     }
 
@@ -63,6 +130,11 @@ export async function getSession(): Promise<AuthSession | null> {
     }
   } catch (error) {
     console.error('Failed to get session:', error)
+    // In development, return mock session on error
+    if (isDevelopment) {
+      console.log('[Dev Mode] Auth error, using mock session:', error)
+      return MOCK_DEV_SESSION
+    }
     return null
   }
 }

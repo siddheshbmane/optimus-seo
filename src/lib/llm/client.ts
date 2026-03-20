@@ -352,7 +352,7 @@ ${context ? `\nContext: ${context}` : ''}`;
 SEO-optimized content that naturally incorporates target keywords while maintaining 
 readability and user engagement.
 
-Target keywords: ${keywords.join(', ')}
+Target keywords: ${(keywords ?? []).join(', ')}
 Content type: ${contentType}
 
 Guidelines:
