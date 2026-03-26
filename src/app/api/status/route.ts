@@ -16,7 +16,6 @@ export async function GET() {
       dataForSEO: features.dataForSEO.enabled,
       llm: features.llm.enabled,
       aiAgents: features.beta.aiAgents,
-      demoMode: process.env.DEMO_MODE,
     },
     modules: features.modules,
   });
