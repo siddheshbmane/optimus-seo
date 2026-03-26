@@ -109,6 +109,11 @@ class DataForSEOClient {
         clearTimeout(timeoutId);
 
         if (!response.ok) {
+          // On 401 Unauthorized, credentials are invalid - fall back to mock data
+          if (response.status === 401) {
+            console.warn('[DataForSEO] Credentials unauthorized (401) - falling back to mock data');
+            return this.getMockResponse<T>(endpoint, data);
+          }
           const retryStatuses = dataForSEOConfig.retry.retryOn as readonly number[];
           if (retryStatuses.includes(response.status) && attempt < dataForSEOConfig.retry.maxRetries) {
             await new Promise(resolve => setTimeout(resolve, dataForSEOConfig.retry.retryDelay * (attempt + 1)));
