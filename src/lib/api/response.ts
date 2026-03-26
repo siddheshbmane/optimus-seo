@@ -25,12 +25,16 @@ export interface ApiResponse<T = unknown> {
 }
 
 // Success response
-export function success<T>(data: T, meta?: ApiResponse['meta']): NextResponse<ApiResponse<T>> {
+export function success<T>(data: T, meta?: ApiResponse['meta'], status = 200): NextResponse<ApiResponse<T>> {
   return NextResponse.json({
     success: true,
     data,
     meta,
-  })
+  }, { status })
+}
+
+export function created<T>(data: T): NextResponse<ApiResponse<T>> {
+  return success(data, undefined, 201)
 }
 
 // Error response

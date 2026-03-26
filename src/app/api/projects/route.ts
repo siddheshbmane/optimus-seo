@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
       return newProject
     })
     
-    return success(project)
+    return success(project, undefined, 201)
   } catch (error) {
     if (error instanceof Response) {
       return error
