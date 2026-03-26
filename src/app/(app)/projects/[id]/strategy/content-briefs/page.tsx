@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   FileText,
   Plus,
@@ -51,6 +51,8 @@ import {
   ChevronDown,
   Settings,
   Trash2,
+  Loader2,
+  ClipboardCopy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,7 +60,7 @@ import { Badge } from "@/components/ui/badge";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { SlidePanel } from "@/components/ui/slide-panel";
 import { Input } from "@/components/ui/input";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
 import { formatNumber, cn } from "@/lib/utils";
 import {
   AreaChart,
@@ -515,8 +517,9 @@ const tabs = [
 export default function ContentBriefsPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
-  
+  const router = useRouter();
+  const { project } = useProjectContext();
+
   // State
   const [activeTab, setActiveTab] = React.useState("overview");
   const [briefs, setBriefs] = React.useState(initialBriefs);
@@ -537,8 +540,81 @@ export default function ContentBriefsPage() {
     wordCount: 2500,
     assignee: "AI Writer",
   });
+  const [isGeneratingBrief, setIsGeneratingBrief] = React.useState(false);
+  const [generatedBriefContent, setGeneratedBriefContent] = React.useState("");
+  const [briefCopied, setBriefCopied] = React.useState(false);
 
   if (!project) return null;
+
+  const handleGenerateBrief = async (targetKeyword: string, title: string) => {
+    if (!targetKeyword.trim() || !title.trim()) return;
+    setIsGeneratingBrief(true);
+    setGeneratedBriefContent("");
+    try {
+      const response = await fetch("/api/llm/seo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generateContent",
+          params: {
+            topic: title,
+            keywords: [targetKeyword],
+            contentType: "blog",
+          },
+        }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to generate brief");
+      }
+      const data = await response.json();
+      setGeneratedBriefContent(data.result || "");
+    } catch (err) {
+      setGeneratedBriefContent(
+        `Error generating brief: ${err instanceof Error ? err.message : "Unknown error"}. Please check that an LLM provider (Groq) is configured in Settings > AI Configuration.`
+      );
+    } finally {
+      setIsGeneratingBrief(false);
+    }
+  };
+
+  const handleCopyBrief = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedBriefContent);
+      setBriefCopied(true);
+      setTimeout(() => setBriefCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement("textarea");
+      textarea.value = generatedBriefContent;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setBriefCopied(true);
+      setTimeout(() => setBriefCopied(false), 2000);
+    }
+  };
+
+  const handleUseBrief = () => {
+    const brief: ContentBrief = {
+      id: briefs.length + 1,
+      title: newBrief.title,
+      targetKeyword: newBrief.targetKeyword,
+      wordCount: newBrief.wordCount,
+      headings: Math.floor(newBrief.wordCount / 300),
+      status: "draft",
+      createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      assignee: newBrief.assignee,
+      contentScore: 0,
+      readability: 0,
+      seoScore: 0,
+    };
+    setBriefs([brief, ...briefs]);
+    setShowAddModal(false);
+    setGeneratedBriefContent("");
+    setNewBrief({ title: "", targetKeyword: "", wordCount: 2500, assignee: "AI Writer" });
+  };
 
   const handleAddBrief = () => {
     const brief: ContentBrief = {
@@ -1055,9 +1131,26 @@ export default function ContentBriefsPage() {
                   </div>
                 </div>
 
-                <Button variant="accent" className="w-full">
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Generate Full Content
+                <Button
+                  variant="accent"
+                  className="w-full"
+                  onClick={() => handleGenerateBrief(selectedBrief.targetKeyword, selectedBrief.title)}
+                  disabled={isGeneratingBrief}
+                >
+                  {isGeneratingBrief ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 mr-2" />
+                  )}
+                  {isGeneratingBrief ? "Generating..." : "Generate Full Content"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => router.push(`/projects/${projectId}/execution/content-writer`)}
+                >
+                  <PenTool className="h-4 w-4 mr-2" />
+                  Write with AI Writer
                 </Button>
               </div>
             </CardContent>
@@ -1380,68 +1473,158 @@ export default function ContentBriefsPage() {
       {/* Add Brief Modal */}
       <Modal
         isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => {
+          setShowAddModal(false);
+          setGeneratedBriefContent("");
+        }}
         title="Generate New Brief"
         description="AI will create a content brief based on your inputs"
-        size="md"
+        size="lg"
       >
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">
-              Content Title
-            </label>
-            <Input 
-              placeholder="e.g., Complete Guide to Technical SEO"
-              value={newBrief.title}
-              onChange={(e) => setNewBrief({ ...newBrief, title: e.target.value })}
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                Content Title
+              </label>
+              <Input
+                placeholder="e.g., Complete Guide to Technical SEO"
+                value={newBrief.title}
+                onChange={(e) => setNewBrief({ ...newBrief, title: e.target.value })}
+                disabled={isGeneratingBrief}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                Target Keyword
+              </label>
+              <Input
+                placeholder="e.g., technical seo guide"
+                value={newBrief.targetKeyword}
+                onChange={(e) => setNewBrief({ ...newBrief, targetKeyword: e.target.value })}
+                disabled={isGeneratingBrief}
+              />
+            </div>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">
-              Target Keyword
-            </label>
-            <Input 
-              placeholder="e.g., technical seo guide"
-              value={newBrief.targetKeyword}
-              onChange={(e) => setNewBrief({ ...newBrief, targetKeyword: e.target.value })}
-            />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                Target Word Count
+              </label>
+              <Input
+                type="number"
+                value={newBrief.wordCount}
+                onChange={(e) => setNewBrief({ ...newBrief, wordCount: parseInt(e.target.value) || 0 })}
+                disabled={isGeneratingBrief}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                Assignee
+              </label>
+              <select
+                className="w-full h-10 px-3 rounded-md border border-border bg-bg-card text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                value={newBrief.assignee}
+                onChange={(e) => setNewBrief({ ...newBrief, assignee: e.target.value })}
+                disabled={isGeneratingBrief}
+              >
+                <option value="AI Writer">AI Writer</option>
+                <option value="Content Team">Content Team</option>
+                <option value="External Writer">External Writer</option>
+              </select>
+            </div>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">
-              Target Word Count
-            </label>
-            <Input 
-              type="number"
-              value={newBrief.wordCount}
-              onChange={(e) => setNewBrief({ ...newBrief, wordCount: parseInt(e.target.value) || 0 })}
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">
-              Assignee
-            </label>
-            <select 
-              className="w-full h-10 px-3 rounded-md border border-border bg-bg-card text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-              value={newBrief.assignee}
-              onChange={(e) => setNewBrief({ ...newBrief, assignee: e.target.value })}
+
+          {/* Generate with AI Button */}
+          {!generatedBriefContent && !isGeneratingBrief && (
+            <Button
+              variant="accent"
+              className="w-full"
+              size="md"
+              onClick={() => handleGenerateBrief(newBrief.targetKeyword, newBrief.title)}
+              disabled={!newBrief.title.trim() || !newBrief.targetKeyword.trim()}
             >
-              <option value="AI Writer">AI Writer</option>
-              <option value="Content Team">Content Team</option>
-              <option value="External Writer">External Writer</option>
-            </select>
-          </div>
-          
+              <Sparkles className="h-4 w-4 mr-2" />
+              Generate with AI
+            </Button>
+          )}
+
+          {/* Loading State */}
+          {isGeneratingBrief && (
+            <div className="p-6 rounded-lg bg-bg-elevated border border-border">
+              <div className="flex flex-col items-center justify-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                  <Loader2 className="h-5 w-5 text-accent animate-spin" />
+                </div>
+                <div className="text-center">
+                  <p className="font-medium text-text-primary">Generating content brief...</p>
+                  <p className="text-sm text-text-muted mt-1">
+                    AI is analyzing your keyword and creating a comprehensive brief
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Generated Brief Content */}
+          {generatedBriefContent && !isGeneratingBrief && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-accent" />
+                  <span className="text-sm font-medium text-text-primary">AI-Generated Brief</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={handleCopyBrief}>
+                    <ClipboardCopy className="h-4 w-4 mr-1" />
+                    {briefCopied ? "Copied!" : "Copy"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleGenerateBrief(newBrief.targetKeyword, newBrief.title)}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-1" />
+                    Regenerate
+                  </Button>
+                </div>
+              </div>
+              <div className="max-h-64 overflow-y-auto rounded-lg bg-bg-elevated border border-border p-4">
+                <div className="prose prose-sm max-w-none text-text-secondary whitespace-pre-wrap">
+                  {generatedBriefContent}
+                </div>
+              </div>
+            </div>
+          )}
+
           <ModalFooter>
-            <Button variant="secondary" onClick={() => setShowAddModal(false)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowAddModal(false);
+                setGeneratedBriefContent("");
+              }}
+            >
               Cancel
             </Button>
-            <Button variant="accent" onClick={handleAddBrief}>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Generate Brief
-            </Button>
+            {generatedBriefContent && !isGeneratingBrief ? (
+              <Button variant="accent" onClick={handleUseBrief}>
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Use This Brief
+              </Button>
+            ) : (
+              <Button
+                variant="accent"
+                onClick={handleAddBrief}
+                disabled={isGeneratingBrief || !newBrief.title.trim() || !newBrief.targetKeyword.trim()}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Save Without AI
+              </Button>
+            )}
           </ModalFooter>
         </div>
       </Modal>

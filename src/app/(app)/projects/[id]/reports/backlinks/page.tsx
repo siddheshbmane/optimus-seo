@@ -19,7 +19,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
+import { useBacklinksSummary, useBacklinks } from "@/hooks/use-seo-data";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
 import { formatNumber, cn } from "@/lib/utils";
 
 const backlinksData = {
@@ -100,16 +102,81 @@ const lostBacklinks = [
 export default function BacklinksReportPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
+
+  // Fetch backlinks data from API (with mock fallback)
+  const { data: apiBacklinksSummary, isLoading: summaryLoading, source: summarySource, refetch: refetchSummary } = useBacklinksSummary(
+    project?.url || ''
+  );
+  const { data: apiBacklinks, isLoading: backlinksLoading, source: backlinksSource } = useBacklinks(
+    project?.url || ''
+  );
 
   if (!project) return null;
+
+  // Use API data if available, otherwise use mock data
+  const backlinksDataToUse = React.useMemo(() => {
+    if (apiBacklinksSummary) {
+      return {
+        total: apiBacklinksSummary.totalBacklinks,
+        newThisMonth: apiBacklinksSummary.newBacklinks30d,
+        lost: apiBacklinksSummary.lostBacklinks30d,
+        dofollow: apiBacklinksSummary.doFollowLinks,
+        nofollow: apiBacklinksSummary.noFollowLinks,
+        domainRating: apiBacklinksSummary.domainRating,
+        referringDomains: apiBacklinksSummary.referringDomains,
+      };
+    }
+    return backlinksData;
+  }, [apiBacklinksSummary]);
+
+  const topBacklinksToUse = React.useMemo(() => {
+    if (apiBacklinks && apiBacklinks.length > 0) {
+      return apiBacklinks.slice(0, 10).map((bl, index) => ({
+        id: index + 1,
+        sourceUrl: bl.sourceUrl,
+        targetUrl: bl.targetUrl,
+        domainRating: bl.domainRating,
+        traffic: bl.pageRating * 1000, // Estimate
+        type: bl.isDoFollow ? "dofollow" : "nofollow",
+        anchor: bl.anchorText,
+        firstSeen: new Date(bl.firstSeen).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      }));
+    }
+    return topBacklinks;
+  }, [apiBacklinks]);
+
+  const handleExport = () => {
+    const data = topBacklinksToUse.map((link) => ({
+      source_url: link.sourceUrl,
+      target_url: link.targetUrl,
+      domain_rating: link.domainRating,
+      traffic: link.traffic,
+      type: link.type,
+      anchor_text: link.anchor,
+      first_seen: link.firstSeen,
+    }));
+    if (data.length === 0) return;
+    const headers = Object.keys(data[0]).join(",");
+    const csv = data.map((row) => Object.values(row).join(",")).join("\n");
+    const blob = new Blob([headers + "\n" + csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `backlinks-report-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Backlinks Report</h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-text-primary">Backlinks Report</h1>
+            <DataSourceIndicator source={summarySource} isLoading={summaryLoading} onRefresh={refetchSummary} compact />
+          </div>
           <p className="text-text-secondary">
             Analyze your link profile and track new backlinks
           </p>
@@ -119,7 +186,7 @@ export default function BacklinksReportPage() {
             <Filter className="h-4 w-4 mr-2" />
             Filter
           </Button>
-          <Button variant="accent">
+          <Button variant="accent" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />
             Export Report
           </Button>
@@ -130,21 +197,21 @@ export default function BacklinksReportPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Total Backlinks"
-          value={formatNumber(backlinksData.total)}
+          value={formatNumber(backlinksDataToUse.total)}
           trend={12}
           trendLabel="this month"
           icon={<Link2 className="h-5 w-5" />}
         />
         <StatCard
           label="Referring Domains"
-          value={backlinksData.referringDomains}
+          value={backlinksDataToUse.referringDomains}
           trend={8}
           trendLabel="this month"
           icon={<Globe className="h-5 w-5" />}
         />
         <StatCard
           label="Domain Rating"
-          value={backlinksData.domainRating}
+          value={backlinksDataToUse.domainRating}
           trend={3}
           trendLabel="vs last month"
           icon={<Shield className="h-5 w-5" />}
@@ -152,8 +219,8 @@ export default function BacklinksReportPage() {
         />
         <StatCard
           label="Dofollow Links"
-          value={`${Math.round((backlinksData.dofollow / backlinksData.total) * 100)}%`}
-          trendLabel={`${formatNumber(backlinksData.dofollow)} links`}
+          value={`${Math.round((backlinksDataToUse.dofollow / backlinksDataToUse.total) * 100)}%`}
+          trendLabel={`${formatNumber(backlinksDataToUse.dofollow)} links`}
           icon={<TrendingUp className="h-5 w-5" />}
         />
       </div>
@@ -177,7 +244,7 @@ export default function BacklinksReportPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {topBacklinks.map((link) => (
+                  {topBacklinksToUse.map((link) => (
                     <tr key={link.id} className="border-b border-border hover:bg-bg-elevated">
                       <td className="p-4">
                         <div className="flex items-center gap-2">

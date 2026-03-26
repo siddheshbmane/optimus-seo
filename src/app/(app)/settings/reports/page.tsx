@@ -38,6 +38,7 @@ import {
   Calendar,
   Clock,
   FileText,
+  Loader2,
   Mail,
   MoreHorizontal,
   Pause,
@@ -46,6 +47,9 @@ import {
   Send,
   Settings,
   Trash2,
+  CheckCircle,
+  AlertCircle,
+  X,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -59,12 +63,74 @@ import {
   type ReportFrequency,
   type ReportFormat,
   formatReportType,
-  mockScheduledReports,
 } from "@/lib/reports/scheduler";
 
+// ---------------------------------------------------------------------------
+// Toast-style feedback banner
+// ---------------------------------------------------------------------------
+type FeedbackType = "success" | "error" | "info";
+
+interface FeedbackMessage {
+  id: number;
+  type: FeedbackType;
+  text: string;
+}
+
+function FeedbackBanner({
+  messages,
+  onDismiss,
+}: {
+  messages: FeedbackMessage[];
+  onDismiss: (id: number) => void;
+}) {
+  if (messages.length === 0) return null;
+  return (
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+      {messages.map((msg) => (
+        <div
+          key={msg.id}
+          className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm font-medium border animate-in slide-in-from-top-2 ${
+            msg.type === "success"
+              ? "bg-success/10 text-success border-success/20"
+              : msg.type === "error"
+              ? "bg-destructive/10 text-destructive border-destructive/20"
+              : "bg-accent/10 text-accent border-accent/20"
+          }`}
+        >
+          {msg.type === "success" ? (
+            <CheckCircle className="h-4 w-4 shrink-0" />
+          ) : msg.type === "error" ? (
+            <AlertCircle className="h-4 w-4 shrink-0" />
+          ) : (
+            <FileText className="h-4 w-4 shrink-0" />
+          )}
+          <span className="flex-1">{msg.text}</span>
+          <button
+            onClick={() => onDismiss(msg.id)}
+            className="shrink-0 hover:opacity-70 transition-opacity"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page component
+// ---------------------------------------------------------------------------
 export default function ScheduledReportsPage() {
-  const [reports, setReports] = React.useState<ScheduledReport[]>(mockScheduledReports);
+  const [reports, setReports] = React.useState<ScheduledReport[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   const [showCreateDialog, setShowCreateDialog] = React.useState(false);
+  const [isCreating, setIsCreating] = React.useState(false);
+  const [togglingIds, setTogglingIds] = React.useState<Set<string>>(new Set());
+  const [deletingIds, setDeletingIds] = React.useState<Set<string>>(new Set());
+  const [runningIds, setRunningIds] = React.useState<Set<string>>(new Set());
+  const [feedbackMessages, setFeedbackMessages] = React.useState<FeedbackMessage[]>([]);
+  const feedbackCounter = React.useRef(0);
+
   const [newReport, setNewReport] = React.useState({
     name: "",
     type: "seo-overview" as ReportType,
@@ -75,38 +141,155 @@ export default function ScheduledReportsPage() {
     dayOfWeek: "1",
   });
 
-  const handleToggleReport = (id: string) => {
-    setReports(prev =>
-      prev.map(r =>
-        r.id === id ? { ...r, enabled: !r.enabled } : r
-      )
-    );
-  };
+  // -------------------------------------------------------------------------
+  // Feedback helpers
+  // -------------------------------------------------------------------------
+  const showFeedback = React.useCallback((type: FeedbackType, text: string) => {
+    const id = ++feedbackCounter.current;
+    setFeedbackMessages((prev) => [...prev, { id, type, text }]);
+    // Auto-dismiss after 4 seconds
+    setTimeout(() => {
+      setFeedbackMessages((prev) => prev.filter((m) => m.id !== id));
+    }, 4000);
+  }, []);
 
-  const handleDeleteReport = (id: string) => {
-    setReports(prev => prev.filter(r => r.id !== id));
-  };
+  const dismissFeedback = React.useCallback((id: number) => {
+    setFeedbackMessages((prev) => prev.filter((m) => m.id !== id));
+  }, []);
 
-  const handleRunNow = async (id: string) => {
+  // -------------------------------------------------------------------------
+  // Load reports from API on mount
+  // -------------------------------------------------------------------------
+  const fetchReports = React.useCallback(async () => {
     try {
-      await fetch("/api/reports/execute", {
+      const response = await fetch("/api/reports/schedule");
+      const data = await response.json();
+      setReports(data.reports || []);
+    } catch {
+      showFeedback("error", "Failed to load scheduled reports");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [showFeedback]);
+
+  React.useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
+
+  // -------------------------------------------------------------------------
+  // Toggle enabled/disabled via PUT
+  // -------------------------------------------------------------------------
+  const handleToggleReport = async (id: string) => {
+    const report = reports.find((r) => r.id === id);
+    if (!report) return;
+
+    setTogglingIds((prev) => new Set(prev).add(id));
+
+    try {
+      const response = await fetch("/api/reports/schedule", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, enabled: !report.enabled }),
+      });
+
+      if (!response.ok) throw new Error("Toggle failed");
+
+      const data = await response.json();
+      setReports((prev) =>
+        prev.map((r) => (r.id === id ? data.report : r))
+      );
+      showFeedback(
+        "success",
+        `"${report.name}" ${!report.enabled ? "enabled" : "paused"}`
+      );
+    } catch {
+      showFeedback("error", `Failed to update "${report.name}"`);
+    } finally {
+      setTogglingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // Delete report via DELETE
+  // -------------------------------------------------------------------------
+  const handleDeleteReport = async (id: string) => {
+    const report = reports.find((r) => r.id === id);
+    if (!report) return;
+
+    setDeletingIds((prev) => new Set(prev).add(id));
+
+    try {
+      const response = await fetch(`/api/reports/schedule?id=${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) throw new Error("Delete failed");
+
+      setReports((prev) => prev.filter((r) => r.id !== id));
+      showFeedback("success", `"${report.name}" deleted`);
+    } catch {
+      showFeedback("error", `Failed to delete "${report.name}"`);
+    } finally {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // Run report now via POST /api/reports/execute
+  // -------------------------------------------------------------------------
+  const handleRunNow = async (id: string) => {
+    const report = reports.find((r) => r.id === id);
+
+    setRunningIds((prev) => new Set(prev).add(id));
+    showFeedback("info", `Generating "${report?.name || "report"}"...`);
+
+    try {
+      const response = await fetch("/api/reports/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reportId: id }),
       });
-    } catch (error) {
-      console.error("Failed to run report:", error);
+
+      if (!response.ok) throw new Error("Execute failed");
+
+      showFeedback("success", `"${report?.name || "Report"}" generation started`);
+    } catch {
+      showFeedback("error", `Failed to run "${report?.name || "report"}"`);
+    } finally {
+      setRunningIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
+  // -------------------------------------------------------------------------
+  // Create new schedule via POST /api/reports/schedule
+  // -------------------------------------------------------------------------
   const handleCreateReport = async () => {
+    if (!newReport.name.trim()) return;
+
+    setIsCreating(true);
+
     const report: Partial<ScheduledReport> = {
       name: newReport.name,
       projectId: "acme-corp",
       type: newReport.type,
       frequency: newReport.frequency,
       format: newReport.format,
-      recipients: newReport.recipients.split(",").map(e => e.trim()).filter(Boolean),
+      recipients: newReport.recipients
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean),
       customSchedule: {
         hour: parseInt(newReport.hour),
         minute: 0,
@@ -121,9 +304,12 @@ export default function ScheduledReportsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(report),
       });
+
+      if (!response.ok) throw new Error("Create failed");
+
       const data = await response.json();
       if (data.report) {
-        setReports(prev => [...prev, data.report]);
+        setReports((prev) => [...prev, data.report]);
         setShowCreateDialog(false);
         setNewReport({
           name: "",
@@ -134,12 +320,18 @@ export default function ScheduledReportsPage() {
           hour: "9",
           dayOfWeek: "1",
         });
+        showFeedback("success", `"${data.report.name}" schedule created`);
       }
-    } catch (error) {
-      console.error("Failed to create report:", error);
+    } catch {
+      showFeedback("error", "Failed to create report schedule");
+    } finally {
+      setIsCreating(false);
     }
   };
 
+  // -------------------------------------------------------------------------
+  // Formatting helpers
+  // -------------------------------------------------------------------------
   const formatNextRun = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString("en-US", {
@@ -151,8 +343,13 @@ export default function ScheduledReportsPage() {
     });
   };
 
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
   return (
     <div className="container mx-auto py-8 px-4">
+      <FeedbackBanner messages={feedbackMessages} onDismiss={dismissFeedback} />
+
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold">Scheduled Reports</h1>
@@ -181,7 +378,9 @@ export default function ScheduledReportsPage() {
                   id="name"
                   placeholder="Weekly SEO Overview"
                   value={newReport.name}
-                  onChange={(e) => setNewReport(prev => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) =>
+                    setNewReport((prev) => ({ ...prev, name: e.target.value }))
+                  }
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -189,19 +388,36 @@ export default function ScheduledReportsPage() {
                   <Label>Report Type</Label>
                   <Select
                     value={newReport.type}
-                    onValueChange={(v) => setNewReport(prev => ({ ...prev, type: v as ReportType }))}
+                    onValueChange={(v) =>
+                      setNewReport((prev) => ({
+                        ...prev,
+                        type: v as ReportType,
+                      }))
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="seo-overview">SEO Overview</SelectItem>
-                      <SelectItem value="keyword-rankings">Keyword Rankings</SelectItem>
-                      <SelectItem value="backlink-analysis">Backlink Analysis</SelectItem>
-                      <SelectItem value="competitor-comparison">Competitor Comparison</SelectItem>
-                      <SelectItem value="technical-audit">Technical Audit</SelectItem>
-                      <SelectItem value="ai-visibility">AI Visibility</SelectItem>
-                      <SelectItem value="content-performance">Content Performance</SelectItem>
+                      <SelectItem value="keyword-rankings">
+                        Keyword Rankings
+                      </SelectItem>
+                      <SelectItem value="backlink-analysis">
+                        Backlink Analysis
+                      </SelectItem>
+                      <SelectItem value="competitor-comparison">
+                        Competitor Comparison
+                      </SelectItem>
+                      <SelectItem value="technical-audit">
+                        Technical Audit
+                      </SelectItem>
+                      <SelectItem value="ai-visibility">
+                        AI Visibility
+                      </SelectItem>
+                      <SelectItem value="content-performance">
+                        Content Performance
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -209,7 +425,12 @@ export default function ScheduledReportsPage() {
                   <Label>Format</Label>
                   <Select
                     value={newReport.format}
-                    onValueChange={(v) => setNewReport(prev => ({ ...prev, format: v as ReportFormat }))}
+                    onValueChange={(v) =>
+                      setNewReport((prev) => ({
+                        ...prev,
+                        format: v as ReportFormat,
+                      }))
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -228,7 +449,12 @@ export default function ScheduledReportsPage() {
                   <Label>Frequency</Label>
                   <Select
                     value={newReport.frequency}
-                    onValueChange={(v) => setNewReport(prev => ({ ...prev, frequency: v as ReportFrequency }))}
+                    onValueChange={(v) =>
+                      setNewReport((prev) => ({
+                        ...prev,
+                        frequency: v as ReportFrequency,
+                      }))
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -244,7 +470,9 @@ export default function ScheduledReportsPage() {
                   <Label>Time</Label>
                   <Select
                     value={newReport.hour}
-                    onValueChange={(v) => setNewReport(prev => ({ ...prev, hour: v }))}
+                    onValueChange={(v) =>
+                      setNewReport((prev) => ({ ...prev, hour: v }))
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -264,7 +492,9 @@ export default function ScheduledReportsPage() {
                   <Label>Day of Week</Label>
                   <Select
                     value={newReport.dayOfWeek}
-                    onValueChange={(v) => setNewReport(prev => ({ ...prev, dayOfWeek: v }))}
+                    onValueChange={(v) =>
+                      setNewReport((prev) => ({ ...prev, dayOfWeek: v }))
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -282,21 +512,38 @@ export default function ScheduledReportsPage() {
                 </div>
               )}
               <div className="grid gap-2">
-                <Label htmlFor="recipients">Recipients (comma-separated)</Label>
+                <Label htmlFor="recipients">
+                  Recipients (comma-separated)
+                </Label>
                 <Input
                   id="recipients"
                   placeholder="team@company.com, manager@company.com"
                   value={newReport.recipients}
-                  onChange={(e) => setNewReport(prev => ({ ...prev, recipients: e.target.value }))}
+                  onChange={(e) =>
+                    setNewReport((prev) => ({
+                      ...prev,
+                      recipients: e.target.value,
+                    }))
+                  }
                 />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="ghost" onClick={() => setShowCreateDialog(false)}>
+              <Button
+                variant="ghost"
+                onClick={() => setShowCreateDialog(false)}
+                disabled={isCreating}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleCreateReport} disabled={!newReport.name}>
-                Create Schedule
+              <Button
+                onClick={handleCreateReport}
+                disabled={!newReport.name.trim() || isCreating}
+              >
+                {isCreating && (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                )}
+                {isCreating ? "Creating..." : "Create Schedule"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -310,31 +557,57 @@ export default function ScheduledReportsPage() {
             <CardHeader className="pb-2">
               <CardDescription>Active Schedules</CardDescription>
               <CardTitle className="text-3xl">
-                {reports.filter(r => r.enabled).length}
+                {isLoading ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                ) : (
+                  reports.filter((r) => r.enabled).length
+                )}
               </CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription>Reports This Month</CardDescription>
-              <CardTitle className="text-3xl">24</CardTitle>
+              <CardDescription>Total Schedules</CardDescription>
+              <CardTitle className="text-3xl">
+                {isLoading ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                ) : (
+                  reports.length
+                )}
+              </CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription>Emails Sent</CardDescription>
-              <CardTitle className="text-3xl">156</CardTitle>
+              <CardDescription>Paused</CardDescription>
+              <CardTitle className="text-3xl">
+                {isLoading ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                ) : (
+                  reports.filter((r) => !r.enabled).length
+                )}
+              </CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Next Report</CardDescription>
               <CardTitle className="text-lg">
-                {reports.length > 0 
-                  ? formatNextRun(reports.sort((a, b) => 
-                      new Date(a.nextRun).getTime() - new Date(b.nextRun).getTime()
-                    )[0].nextRun)
-                  : "No schedules"}
+                {isLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                ) : reports.length > 0 ? (
+                  formatNextRun(
+                    [...reports]
+                      .filter((r) => r.enabled)
+                      .sort(
+                        (a, b) =>
+                          new Date(a.nextRun).getTime() -
+                          new Date(b.nextRun).getTime()
+                      )[0]?.nextRun || reports[0].nextRun
+                  )
+                ) : (
+                  "No schedules"
+                )}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -349,76 +622,135 @@ export default function ScheduledReportsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Report</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Frequency</TableHead>
-                  <TableHead>Format</TableHead>
-                  <TableHead>Recipients</TableHead>
-                  <TableHead>Next Run</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reports.map((report) => (
-                  <TableRow key={report.id}>
-                    <TableCell className="font-medium">{report.name}</TableCell>
-                    <TableCell>
-                      <Badge variant="neutral">{formatReportType(report.type)}</Badge>
-                    </TableCell>
-                    <TableCell className="capitalize">{report.frequency}</TableCell>
-                    <TableCell className="uppercase">{report.format}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Mail className="h-4 w-4 text-muted-foreground" />
-                        <span>{report.recipients.length}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1 text-sm">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        {formatNextRun(report.nextRun)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={report.enabled}
-                        onCheckedChange={() => handleToggleReport(report.id)}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleRunNow(report.id)}>
-                            <Send className="h-4 w-4 mr-2" />
-                            Run Now
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Settings className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => handleDeleteReport(report.id)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="ml-3 text-muted-foreground">
+                  Loading schedules...
+                </span>
+              </div>
+            ) : reports.length === 0 ? (
+              <div className="text-center py-12">
+                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-medium mb-1">
+                  No scheduled reports
+                </h3>
+                <p className="text-muted-foreground mb-4">
+                  Create your first automated report schedule to get started.
+                </p>
+                <Button onClick={() => setShowCreateDialog(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Schedule
+                </Button>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Report</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Frequency</TableHead>
+                    <TableHead>Format</TableHead>
+                    <TableHead>Recipients</TableHead>
+                    <TableHead>Next Run</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {reports.map((report) => {
+                    const isToggling = togglingIds.has(report.id);
+                    const isDeleting = deletingIds.has(report.id);
+                    const isRunning = runningIds.has(report.id);
+
+                    return (
+                      <TableRow
+                        key={report.id}
+                        className={isDeleting ? "opacity-50" : ""}
+                      >
+                        <TableCell className="font-medium">
+                          {report.name}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="neutral">
+                            {formatReportType(report.type)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="capitalize">
+                          {report.frequency}
+                        </TableCell>
+                        <TableCell className="uppercase">
+                          {report.format}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Mail className="h-4 w-4 text-muted-foreground" />
+                            <span>{report.recipients.length}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-sm">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            {formatNextRun(report.nextRun)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {isToggling ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          ) : (
+                            <Switch
+                              checked={report.enabled}
+                              onCheckedChange={() =>
+                                handleToggleReport(report.id)
+                              }
+                              disabled={isToggling || isDeleting}
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={isDeleting}
+                              >
+                                {isDeleting ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <MoreHorizontal className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => handleRunNow(report.id)}
+                                disabled={isRunning}
+                              >
+                                {isRunning ? (
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                ) : (
+                                  <Send className="h-4 w-4 mr-2" />
+                                )}
+                                {isRunning ? "Running..." : "Run Now"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => handleDeleteReport(report.id)}
+                                disabled={isDeleting}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  Loader2,
   Zap,
   Globe,
   FileCode,
@@ -47,7 +48,6 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalFooter } from "@/components/ui/modal";
-import { getProjectById } from "@/data/mock-projects";
 import {
   mockTechnicalIssues,
   mockPageAudits,
@@ -60,7 +60,12 @@ import {
   type TechnicalIssue,
   type PageAudit,
 } from "@/data/mock-technical-seo";
+import { useSiteAuditData } from "@/hooks/use-seo-data";
+import { useProjectContext } from "@/contexts/project-context";
+import { useProjectConfig } from "@/contexts/project-config-context";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
 import { formatNumber, cn } from "@/lib/utils";
+import { exportAuditIssues, type AuditIssueExportData } from "@/lib/export";
 import {
   BarChart,
   Bar,
@@ -166,13 +171,19 @@ const mockInternalLinks = {
 export default function SiteAuditPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
+  const { startAudit, completeAudit, failAudit } = useProjectConfig();
 
   const [activeTab, setActiveTab] = React.useState<TabType>("overview");
+  const [isCrawling, setIsCrawling] = React.useState(false);
+  const [crawlProgress, setCrawlProgress] = React.useState("");
+  const [crawlDepth, setCrawlDepth] = React.useState<number>(5);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [severityFilter, setSeverityFilter] = React.useState<"all" | "critical" | "warning" | "info">("all");
   const [expandedIssues, setExpandedIssues] = React.useState<Set<string>>(new Set());
   const [copiedCode, setCopiedCode] = React.useState<string | null>(null);
+  const [generatingFix, setGeneratingFix] = React.useState<string | null>(null);
+  const [generatedFixes, setGeneratedFixes] = React.useState<Record<string, string>>({});
   
   // Modal states
   const [showPageDetail, setShowPageDetail] = React.useState(false);
@@ -186,10 +197,111 @@ export default function SiteAuditPage() {
   const [selectedIssue, setSelectedIssue] = React.useState<TechnicalIssue | null>(null);
   const [selectedSchemaType, setSelectedSchemaType] = React.useState<string | null>(null);
   const [selectedFixes, setSelectedFixes] = React.useState<Set<string>>(new Set());
+  const [exportFormat, setExportFormat] = React.useState<"csv" | "json" | "html">("html");
+
+  // Fetch site audit data from API (with mock fallback)
+  const { data: auditData, isLoading: auditLoading, source: auditSource, refetch: refetchAudit } = useSiteAuditData(
+    project?.url || ''
+  );
+
+  const handleStartCrawl = async () => {
+    if (!project?.url) return;
+    setIsCrawling(true);
+    setCrawlProgress("Starting crawl...");
+    const auditId = startAudit();
+
+    try {
+      // Start the crawl
+      const response = await fetch('/api/dataforseo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'onpageTaskPost',
+          params: { url: project.url },
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to start crawl');
+
+      const result = await response.json();
+      const taskId = result.tasks?.[0]?.id;
+
+      if (taskId) {
+        setCrawlProgress("Crawl in progress...");
+        // Poll for results
+        let attempts = 0;
+        const maxAttempts = 30;
+        const poll = async () => {
+          attempts++;
+          try {
+            const statusResponse = await fetch('/api/dataforseo', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                method: 'onpageSummary',
+                params: { taskId },
+              }),
+            });
+            if (statusResponse.ok) {
+              const statusResult = await statusResponse.json();
+              const summary = statusResult.tasks?.[0]?.result?.[0];
+              if (summary) {
+                const crawlStatus = summary.crawl_progress || 'in_progress';
+                setCrawlProgress(`Crawled ${summary.pages_crawled || 0} pages...`);
+                if (crawlStatus === 'finished' || attempts >= maxAttempts) {
+                  const score = Math.round(100 - (Number(summary.pages_with_errors || 0) / Math.max(Number(summary.pages_crawled || 1), 1)) * 100);
+                  const issues = (Number(summary.pages_with_errors || 0) + Number(summary.pages_with_warnings || 0));
+                  completeAudit(auditId, score, issues);
+                  setCrawlProgress("Crawl complete!");
+                  setIsCrawling(false);
+                  refetchAudit();
+                  setTimeout(() => setShowRecrawlModal(false), 1500);
+                  return;
+                }
+              }
+            }
+            if (attempts < maxAttempts) {
+              setTimeout(poll, 10000);
+            }
+          } catch {
+            failAudit(auditId);
+            setIsCrawling(false);
+            setCrawlProgress("Crawl failed. Please try again.");
+          }
+        };
+        setTimeout(poll, 15000);
+      } else {
+        // Mock/fallback - simulate instant completion
+        setCrawlProgress("Processing results...");
+        setTimeout(() => {
+          completeAudit(auditId, 78, 17);
+          setCrawlProgress("Crawl complete!");
+          setIsCrawling(false);
+          refetchAudit();
+          setTimeout(() => setShowRecrawlModal(false), 1500);
+        }, 2000);
+      }
+    } catch {
+      failAudit(auditId);
+      setIsCrawling(false);
+      setCrawlProgress("Crawl failed. Please try again.");
+    }
+  };
 
   if (!project) return null;
 
-  const issueCounts = getIssueCounts();
+  // Use API data for overview stats, fallback to mock data for detailed views
+  const healthScore = auditData?.healthScore ?? mockCrawlSummary.healthScore;
+  const pagesScanned = auditData?.pagesScanned ?? mockCrawlSummary.crawledPages;
+  const apiIssueCounts = auditData?.issues ?? null;
+  const issueCounts = apiIssueCounts 
+    ? { 
+        critical: apiIssueCounts.critical, 
+        warning: apiIssueCounts.warnings, 
+        info: apiIssueCounts.notices,
+        total: apiIssueCounts.critical + apiIssueCounts.warnings + apiIssueCounts.notices
+      }
+    : getIssueCounts();
   const issuesByCategory = getIssuesByCategory();
 
   const filteredIssues = mockTechnicalIssues.filter((issue) => {
@@ -217,6 +329,31 @@ export default function SiteAuditPage() {
     navigator.clipboard.writeText(code);
     setCopiedCode(id);
     setTimeout(() => setCopiedCode(null), 2000);
+  };
+
+  const handleGenerateAIFix = async (issue: TechnicalIssue) => {
+    setGeneratingFix(issue.id);
+    try {
+      const response = await fetch('/api/llm/seo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'technicalAudit',
+          params: {
+            issues: [issue.title + ': ' + issue.description],
+            url: project?.url || '',
+          },
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setGeneratedFixes(prev => ({ ...prev, [issue.id]: data.result }));
+      }
+    } catch (error) {
+      console.warn('Failed to generate AI fix:', error);
+    } finally {
+      setGeneratingFix(null);
+    }
   };
 
   const toggleFixSelection = (id: string) => {
@@ -256,8 +393,8 @@ export default function SiteAuditPage() {
   // Overview Tab
   const renderOverviewTab = () => {
     const healthScoreData = [
-      { name: "Score", value: mockCrawlSummary.healthScore, fill: "#FD8C73" },
-      { name: "Remaining", value: 100 - mockCrawlSummary.healthScore, fill: "#1F2937" },
+      { name: "Score", value: healthScore, fill: "#FD8C73" },
+      { name: "Remaining", value: 100 - healthScore, fill: "#1F2937" },
     ];
 
     const issueDistributionData = [
@@ -277,7 +414,7 @@ export default function SiteAuditPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             label="Health Score"
-            value={`${mockCrawlSummary.healthScore}/100`}
+            value={`${healthScore}/100`}
             trend={5.2}
             trendLabel="vs last audit"
             icon={<Zap className="h-5 w-5" />}
@@ -285,7 +422,7 @@ export default function SiteAuditPage() {
           />
           <StatCard
             label="Pages Crawled"
-            value={formatNumber(mockCrawlSummary.crawledPages)}
+            value={formatNumber(pagesScanned)}
             trendLabel={`of ${formatNumber(mockCrawlSummary.totalPages)} total`}
             icon={<Globe className="h-5 w-5" />}
           />
@@ -333,17 +470,17 @@ export default function SiteAuditPage() {
                 </ResponsiveContainer>
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center mt-8">
-                    <p className="text-4xl font-bold text-accent">{mockCrawlSummary.healthScore}</p>
+                    <p className="text-4xl font-bold text-accent">{healthScore}</p>
                     <p className="text-sm text-text-muted">out of 100</p>
                   </div>
                 </div>
               </div>
               <div className="mt-4 p-3 rounded-lg bg-bg-elevated">
                 <p className="text-sm text-text-secondary">
-                  {mockCrawlSummary.healthScore >= 80 ? "Good" : mockCrawlSummary.healthScore >= 60 ? "Needs Improvement" : "Poor"} - 
-                  {mockCrawlSummary.healthScore >= 80 
+                  {healthScore >= 80 ? "Good" : healthScore >= 60 ? "Needs Improvement" : "Poor"} - 
+                  {healthScore >= 80 
                     ? " Your site is well-optimized with minor issues to address."
-                    : mockCrawlSummary.healthScore >= 60
+                    : healthScore >= 60
                     ? " Several issues need attention to improve SEO performance."
                     : " Critical issues are affecting your site's SEO performance."}
                 </p>
@@ -584,14 +721,14 @@ export default function SiteAuditPage() {
                     <Activity className="h-5 w-5 text-text-muted" />
                     <span className="text-text-secondary">Crawl Rate</span>
                   </div>
-                  <span className="font-medium">{Math.round((mockCrawlSummary.crawledPages / mockCrawlSummary.totalPages) * 100)}%</span>
+                  <span className="font-medium">{Math.round((pagesScanned / mockCrawlSummary.totalPages) * 100)}%</span>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-bg-elevated">
                   <div className="flex items-center gap-3">
                     <Shield className="h-5 w-5 text-text-muted" />
                     <span className="text-text-secondary">Indexability Rate</span>
                   </div>
-                  <span className="font-medium">{Math.round((mockCrawlSummary.indexablePages / mockCrawlSummary.crawledPages) * 100)}%</span>
+                  <span className="font-medium">{Math.round((mockCrawlSummary.indexablePages / pagesScanned) * 100)}%</span>
                 </div>
                 <Button variant="accent" className="w-full" onClick={() => setShowRecrawlModal(true)}>
                   <RefreshCw className="h-4 w-4 mr-2" />
@@ -822,19 +959,47 @@ export default function SiteAuditPage() {
                         <Button
                           variant="accent"
                           size="sm"
-                          onClick={() => {
-                            setSelectedIssue(issue);
-                            setShowIssueDetail(true);
-                          }}
+                          disabled={generatingFix === issue.id}
+                          onClick={() => handleGenerateAIFix(issue)}
                         >
-                          <Zap className="h-3.5 w-3.5 mr-1" />
-                          Generate AI Fix
+                          {generatingFix === issue.id ? (
+                            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                          ) : (
+                            <Zap className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          {generatingFix === issue.id ? "Generating..." : "Generate AI Fix"}
                         </Button>
                         <Button variant="ghost" size="sm">
                           <ExternalLink className="h-3.5 w-3.5 mr-1" />
                           View affected pages
                         </Button>
                       </div>
+
+                      {generatedFixes[issue.id] && (
+                        <div className="mt-4 p-4 rounded-lg border border-accent/30 bg-accent/5">
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-sm font-semibold text-text-primary flex items-center gap-1.5">
+                              <Zap className="h-4 w-4 text-accent" />
+                              AI-Generated Fix
+                            </h4>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => copyToClipboard(generatedFixes[issue.id], `ai-fix-${issue.id}`)}
+                            >
+                              {copiedCode === `ai-fix-${issue.id}` ? (
+                                <Check className="h-3.5 w-3.5 mr-1 text-success" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5 mr-1" />
+                              )}
+                              {copiedCode === `ai-fix-${issue.id}` ? "Copied!" : "Copy"}
+                            </Button>
+                          </div>
+                          <pre className="p-3 bg-bg-primary rounded-lg text-sm font-mono text-text-secondary overflow-x-auto whitespace-pre-wrap">
+                            {generatedFixes[issue.id]}
+                          </pre>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1381,9 +1546,12 @@ export default function SiteAuditPage() {
         {/* Header Row - Compact */}
         <div className="flex items-center justify-between px-3 sm:px-4 lg:px-6 py-1.5 sm:py-2 border-b border-border">
           <div className="min-w-0">
-            <h1 className="text-sm sm:text-base font-semibold text-text-primary truncate">Technical SEO Audit</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm sm:text-base font-semibold text-text-primary truncate">Technical SEO Audit</h1>
+              <DataSourceIndicator source={auditSource} isLoading={auditLoading} onRefresh={refetchAudit} compact />
+            </div>
             <p className="text-[10px] sm:text-xs text-text-muted">
-              {new Date(mockCrawlSummary.lastCrawl).toLocaleDateString()} • {formatNumber(mockCrawlSummary.crawledPages)} pages
+              {new Date(mockCrawlSummary.lastCrawl).toLocaleDateString()} • {formatNumber(pagesScanned)} pages
             </p>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
@@ -1540,13 +1708,47 @@ export default function SiteAuditPage() {
               </div>
             )}
 
+            {generatedFixes[selectedIssue.id] && (
+              <div className="p-4 rounded-lg border border-accent/30 bg-accent/5">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold text-text-primary flex items-center gap-1.5">
+                    <Zap className="h-4 w-4 text-accent" />
+                    AI-Generated Fix
+                  </h4>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(generatedFixes[selectedIssue.id], `ai-fix-modal-${selectedIssue.id}`)}
+                  >
+                    {copiedCode === `ai-fix-modal-${selectedIssue.id}` ? (
+                      <Check className="h-3.5 w-3.5 mr-1 text-success" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    {copiedCode === `ai-fix-modal-${selectedIssue.id}` ? "Copied!" : "Copy"}
+                  </Button>
+                </div>
+                <pre className="p-3 bg-bg-primary rounded-lg text-sm font-mono text-text-secondary overflow-x-auto whitespace-pre-wrap">
+                  {generatedFixes[selectedIssue.id]}
+                </pre>
+              </div>
+            )}
+
             <ModalFooter>
               <Button variant="secondary" onClick={() => setShowIssueDetail(false)}>
                 Close
               </Button>
-              <Button variant="accent">
-                <Zap className="h-4 w-4 mr-2" />
-                Generate AI Fix
+              <Button
+                variant="accent"
+                disabled={generatingFix === selectedIssue.id}
+                onClick={() => handleGenerateAIFix(selectedIssue)}
+              >
+                {generatingFix === selectedIssue.id ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Zap className="h-4 w-4 mr-2" />
+                )}
+                {generatingFix === selectedIssue.id ? "Generating..." : "Generate AI Fix"}
               </Button>
             </ModalFooter>
           </div>
@@ -1621,8 +1823,8 @@ export default function SiteAuditPage() {
       <Modal
         isOpen={showFixExport}
         onClose={() => setShowFixExport(false)}
-        title="Export Fixes"
-        description={`Export ${selectedFixes.size > 0 ? selectedFixes.size : 'all'} fixes`}
+        title="Export Issues"
+        description={`Export ${selectedFixes.size > 0 ? selectedFixes.size : 'all'} issues`}
         size="md"
       >
         <div className="space-y-4">
@@ -1630,13 +1832,19 @@ export default function SiteAuditPage() {
             <label className="block text-sm font-medium text-text-primary mb-3">Export Format</label>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { value: "html", label: "HTML", desc: "Ready to paste" },
-                { value: "json", label: "JSON", desc: "Structured data" },
-                { value: "csv", label: "CSV", desc: "Spreadsheet" },
+                { value: "html" as const, label: "HTML", desc: "Print-ready report" },
+                { value: "json" as const, label: "JSON", desc: "Structured data" },
+                { value: "csv" as const, label: "CSV", desc: "Spreadsheet" },
               ].map((format) => (
                 <button
                   key={format.value}
-                  className="p-4 rounded-lg border border-border hover:border-accent/50 text-left transition-colors"
+                  onClick={() => setExportFormat(format.value)}
+                  className={cn(
+                    "p-4 rounded-lg border text-left transition-colors",
+                    exportFormat === format.value 
+                      ? "border-accent bg-accent/10" 
+                      : "border-border hover:border-accent/50"
+                  )}
                 >
                   <p className="font-medium text-text-primary">{format.label}</p>
                   <p className="text-xs text-text-muted mt-1">{format.desc}</p>
@@ -1649,9 +1857,33 @@ export default function SiteAuditPage() {
             <Button variant="secondary" onClick={() => setShowFixExport(false)}>
               Cancel
             </Button>
-            <Button variant="accent">
+            <Button 
+              variant="accent"
+              onClick={() => {
+                // Get issues to export
+                const issuesToExport = selectedFixes.size > 0
+                  ? mockTechnicalIssues.filter(issue => selectedFixes.has(issue.id))
+                  : mockTechnicalIssues;
+                
+                // Transform to export format
+                const exportData: AuditIssueExportData[] = issuesToExport.map(issue => ({
+                  title: issue.title,
+                  severity: issue.severity,
+                  category: categoryLabels[issue.category] || issue.category,
+                  affectedPages: issue.affectedPages,
+                  description: issue.description,
+                }));
+                
+                // Export with selected format
+                const filename = `site-audit-${project?.name || 'export'}-${new Date().toISOString().split('T')[0]}`;
+                exportAuditIssues(exportData, exportFormat, filename);
+                
+                // Close modal
+                setShowFixExport(false);
+              }}
+            >
               <Download className="h-4 w-4 mr-2" />
-              Export
+              Export {selectedFixes.size > 0 ? selectedFixes.size : mockTechnicalIssues.length} Issues
             </Button>
           </ModalFooter>
         </div>
@@ -1678,29 +1910,45 @@ export default function SiteAuditPage() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">Crawl Depth</label>
-            <div className="flex gap-2">
-              {[3, 5, 10, "Unlimited"].map((depth) => (
-                <button
-                  key={depth}
-                  className="px-4 py-2 rounded-lg border border-border hover:border-accent/50 text-sm font-medium transition-colors"
-                >
-                  {depth}
-                </button>
-              ))}
+          {isCrawling ? (
+            <div className="p-6 text-center space-y-4">
+              <RefreshCw className="h-8 w-8 text-accent animate-spin mx-auto" />
+              <p className="font-medium text-text-primary">{crawlProgress}</p>
+              <p className="text-sm text-text-muted">This may take 5-15 minutes depending on site size.</p>
             </div>
-          </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-2">Crawl Depth</label>
+                <div className="flex gap-2">
+                  {[3, 5, 10, 0].map((depth) => (
+                    <button
+                      key={depth}
+                      onClick={() => setCrawlDepth(depth)}
+                      className={cn(
+                        "px-4 py-2 rounded-lg border text-sm font-medium transition-colors",
+                        crawlDepth === depth
+                          ? "border-accent bg-accent/10 text-accent"
+                          : "border-border hover:border-accent/50"
+                      )}
+                    >
+                      {depth === 0 ? "Unlimited" : depth}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          <ModalFooter>
-            <Button variant="secondary" onClick={() => setShowRecrawlModal(false)}>
-              Cancel
-            </Button>
-            <Button variant="accent">
-              <Play className="h-4 w-4 mr-2" />
-              Start Crawl
-            </Button>
-          </ModalFooter>
+              <ModalFooter>
+                <Button variant="secondary" onClick={() => setShowRecrawlModal(false)}>
+                  Cancel
+                </Button>
+                <Button variant="accent" onClick={handleStartCrawl}>
+                  <Play className="h-4 w-4 mr-2" />
+                  Start Crawl
+                </Button>
+              </ModalFooter>
+            </>
+          )}
         </div>
       </Modal>
     </div>

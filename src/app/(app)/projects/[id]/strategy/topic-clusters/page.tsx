@@ -25,8 +25,10 @@ import { Badge } from "@/components/ui/badge";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { SlidePanel } from "@/components/ui/slide-panel";
 import { Input } from "@/components/ui/input";
-import { getProjectById } from "@/data/mock-projects";
-import { cn } from "@/lib/utils";
+import { useProjectContext } from "@/contexts/project-context";
+import { useTopicClusters } from "@/hooks/use-seo-data";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
+import { cn, formatNumber } from "@/lib/utils";
 
 interface TopicCluster {
   id: number;
@@ -120,7 +122,7 @@ const initialClusterPages: ClusterPage[] = [
 export default function TopicClustersPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
   
   const [topicClusters, setTopicClusters] = React.useState(initialTopicClusters);
   const [clusterPages, setClusterPages] = React.useState(initialClusterPages);
@@ -144,11 +146,37 @@ export default function TopicClustersPage() {
   });
   const [editingCluster, setEditingCluster] = React.useState<TopicCluster | null>(null);
 
+  // Fetch topic clusters from API (with mock fallback)
+  const { data: apiClusters, isLoading: clustersLoading, source: clustersSource, refetch: refetchClusters } = useTopicClusters(
+    project?.name || 'SEO'
+  );
+
+  // Transform API clusters to our format
+  const apiTopicClusters = React.useMemo(() => {
+    if (apiClusters && apiClusters.length > 0) {
+      return apiClusters.map((cluster, index) => ({
+        id: index + 1,
+        name: cluster.pillarTopic,
+        pillarPage: `Complete Guide to ${cluster.pillarTopic}`,
+        pillarStatus: "published" as const,
+        clusterPages: cluster.subtopics.length,
+        publishedPages: cluster.subtopics.filter(s => s.status === 'covered').length,
+        totalKeywords: cluster.subtopics.length + 1,
+        internalLinks: Math.floor(cluster.subtopics.length * 2),
+        traffic: Math.floor(cluster.totalVolume * 0.1),
+      }));
+    }
+    return null;
+  }, [apiClusters]);
+
   if (!project) return null;
 
-  const totalClusters = topicClusters.length;
-  const totalClusterPages = topicClusters.reduce((sum, c) => sum + c.clusterPages, 0);
-  const publishedPages = topicClusters.reduce((sum, c) => sum + c.publishedPages, 0);
+  // Use API clusters if available
+  const clustersToUse = apiTopicClusters || topicClusters;
+
+  const totalClusters = clustersToUse.length;
+  const totalClusterPages = clustersToUse.reduce((sum, c) => sum + c.clusterPages, 0);
+  const publishedPages = clustersToUse.reduce((sum, c) => sum + c.publishedPages, 0);
 
   const handleAddCluster = () => {
     const cluster: TopicCluster = {
@@ -240,7 +268,10 @@ export default function TopicClustersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Topic Clusters</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-text-primary">Topic Clusters</h1>
+            <DataSourceIndicator source={clustersSource} isLoading={clustersLoading} onRefresh={refetchClusters} compact />
+          </div>
           <p className="text-text-secondary">
             Build topical authority with content clusters
           </p>

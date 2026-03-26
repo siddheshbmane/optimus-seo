@@ -34,7 +34,10 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalFooter } from "@/components/ui/modal";
-import { getProjectById } from "@/data/mock-projects";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
+import { useProjectContext } from "@/contexts/project-context";
+import { useKeywordData } from "@/hooks/use-seo-data";
+import { useSEOAnalysis } from "@/hooks/use-llm";
 import { formatNumber, cn } from "@/lib/utils";
 import {
   LineChart,
@@ -119,13 +122,43 @@ const mockOptimizationTips = [
 export default function YouTubeSEOPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
 
   const [activeTab, setActiveTab] = React.useState<TabType>("overview");
   const [searchQuery, setSearchQuery] = React.useState("");
   const [showAddVideo, setShowAddVideo] = React.useState(false);
   const [showVideoDetail, setShowVideoDetail] = React.useState(false);
   const [selectedVideo, setSelectedVideo] = React.useState<typeof mockVideos[0] | null>(null);
+  const [isSyncing, setIsSyncing] = React.useState(false);
+  const [optimizeResult, setOptimizeResult] = React.useState<string | null>(null);
+  const [showOptimizeResult, setShowOptimizeResult] = React.useState(false);
+
+  // Data hooks
+  const { data: keywordApiData, isLoading: keywordsLoading, source: keywordsSource, refetch: refetchKeywords } = useKeywordData(
+    project?.url || '',
+    project?.locationCode || 2840
+  );
+  const { analyze, isLoading: llmLoading } = useSEOAnalysis();
+
+  const handleSyncData = React.useCallback(async () => {
+    setIsSyncing(true);
+    await refetchKeywords();
+    setIsSyncing(false);
+  }, [refetchKeywords]);
+
+  const handleOptimizeVideo = React.useCallback(async (videoTitle: string, keyword: string) => {
+    try {
+      const result = await analyze('generateContent', {
+        topic: `Optimize YouTube video: "${videoTitle}"`,
+        keywords: [keyword],
+        contentType: 'meta' as const,
+      });
+      setOptimizeResult(result);
+      setShowOptimizeResult(true);
+    } catch {
+      // Error handled by hook
+    }
+  }, [analyze]);
 
   if (!project) return null;
 
@@ -523,22 +556,30 @@ export default function YouTubeSEOPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            <Youtube className="h-7 w-7 text-[#FF0000]" />
-            YouTube SEO
-          </h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+              <Youtube className="h-7 w-7 text-[#FF0000]" />
+              YouTube SEO
+            </h1>
+            <DataSourceIndicator
+              source={keywordsSource}
+              isLoading={keywordsLoading}
+              onRefresh={refetchKeywords}
+              compact
+            />
+          </div>
           <p className="text-text-secondary">
             Optimize your YouTube channel and video rankings
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary">
-            <RefreshCw className="h-4 w-4 mr-2" />
+          <Button variant="secondary" onClick={handleSyncData} disabled={isSyncing}>
+            <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
             Sync Data
           </Button>
-          <Button variant="accent">
+          <Button variant="accent" onClick={() => handleOptimizeVideo("All Videos", "seo")} disabled={llmLoading}>
             <Sparkles className="h-4 w-4 mr-2" />
-            Optimize Videos
+            {llmLoading ? "Optimizing..." : "Optimize Videos"}
           </Button>
         </div>
       </div>
@@ -620,13 +661,39 @@ export default function YouTubeSEOPage() {
             </div>
             <ModalFooter>
               <Button variant="secondary" onClick={() => setShowVideoDetail(false)}>Close</Button>
-              <Button variant="accent">
+              <Button
+                variant="accent"
+                disabled={llmLoading}
+                onClick={() => handleOptimizeVideo(selectedVideo.title, selectedVideo.keyword)}
+              >
                 <Sparkles className="h-4 w-4 mr-2" />
-                Optimize Video
+                {llmLoading ? "Optimizing..." : "Optimize Video"}
               </Button>
             </ModalFooter>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={showOptimizeResult}
+        onClose={() => setShowOptimizeResult(false)}
+        title="AI Optimization Suggestions"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="h-4 w-4 text-accent" />
+              <span className="font-medium text-accent">AI-Generated Suggestions</span>
+            </div>
+            <div className="text-sm text-text-secondary whitespace-pre-wrap">
+              {optimizeResult || "No suggestions generated yet."}
+            </div>
+          </div>
+          <ModalFooter>
+            <Button variant="secondary" onClick={() => setShowOptimizeResult(false)}>Close</Button>
+          </ModalFooter>
+        </div>
       </Modal>
     </div>
   );

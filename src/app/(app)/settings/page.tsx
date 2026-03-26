@@ -12,6 +12,7 @@ import {
   Mail,
   Building,
   Save,
+  CheckCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,8 +34,31 @@ const apiKeys = [
   { name: "Development API Key", key: "sk_test_****************************5678", created: "Feb 15, 2026", lastUsed: "1 day ago" },
 ];
 
+const defaultNotifications = [
+  { label: "Weekly ranking reports", description: "Receive weekly email summaries", enabled: true },
+  { label: "Agent completion alerts", description: "Get notified when AI agents complete tasks", enabled: true },
+  { label: "Critical issue alerts", description: "Immediate alerts for critical SEO issues", enabled: true },
+  { label: "Competitor alerts", description: "Notifications when competitors make changes", enabled: false },
+  { label: "New feature announcements", description: "Learn about new Optimus SEO features", enabled: true },
+  { label: "Marketing emails", description: "Tips, best practices, and case studies", enabled: false },
+];
+
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = React.useState("profile");
+  const [saveFeedback, setSaveFeedback] = React.useState<string | null>(null);
+  const [notifications, setNotifications] = React.useState(defaultNotifications);
+  const [selectedTheme, setSelectedTheme] = React.useState("System");
+
+  const handleSave = (section: string) => {
+    setSaveFeedback(section);
+    setTimeout(() => setSaveFeedback(null), 2500);
+  };
+
+  const handleToggleNotification = (index: number) => {
+    setNotifications((prev) =>
+      prev.map((n, i) => (i === index ? { ...n, enabled: !n.enabled } : n))
+    );
+  };
 
   return (
     <div className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4">
@@ -129,8 +153,14 @@ export default function SettingsPage() {
                       <label className="text-sm font-medium text-text-primary">Job Title</label>
                       <Input defaultValue="SEO Director" />
                     </div>
-                    <div className="flex justify-end">
-                      <Button variant="accent">
+                    <div className="flex items-center justify-end gap-3">
+                      {saveFeedback === "profile" && (
+                        <span className="flex items-center gap-1.5 text-sm text-success animate-in fade-in">
+                          <CheckCircle className="h-4 w-4" />
+                          Changes saved
+                        </span>
+                      )}
+                      <Button variant="accent" onClick={() => handleSave("profile")}>
                         <Save className="h-4 w-4 mr-2" />
                         Save Changes
                       </Button>
@@ -154,8 +184,14 @@ export default function SettingsPage() {
                       <label className="text-sm font-medium text-text-primary">Website</label>
                       <Input defaultValue="https://acmecorp.com" />
                     </div>
-                    <div className="flex justify-end">
-                      <Button variant="accent">
+                    <div className="flex items-center justify-end gap-3">
+                      {saveFeedback === "organization" && (
+                        <span className="flex items-center gap-1.5 text-sm text-success animate-in fade-in">
+                          <CheckCircle className="h-4 w-4" />
+                          Changes saved
+                        </span>
+                      )}
+                      <Button variant="accent" onClick={() => handleSave("organization")}>
                         <Save className="h-4 w-4 mr-2" />
                         Save Changes
                       </Button>
@@ -175,20 +211,14 @@ export default function SettingsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {[
-                      { label: "Weekly ranking reports", description: "Receive weekly email summaries", enabled: true },
-                      { label: "Agent completion alerts", description: "Get notified when AI agents complete tasks", enabled: true },
-                      { label: "Critical issue alerts", description: "Immediate alerts for critical SEO issues", enabled: true },
-                      { label: "Competitor alerts", description: "Notifications when competitors make changes", enabled: false },
-                      { label: "New feature announcements", description: "Learn about new Optimus SEO features", enabled: true },
-                      { label: "Marketing emails", description: "Tips, best practices, and case studies", enabled: false },
-                    ].map((notification, index) => (
+                    {notifications.map((notification, index) => (
                       <div key={index} className="flex items-center justify-between p-4 rounded-lg bg-bg-elevated">
                         <div>
                           <p className="font-medium text-text-primary">{notification.label}</p>
                           <p className="text-sm text-text-muted">{notification.description}</p>
                         </div>
                         <button
+                          onClick={() => handleToggleNotification(index)}
                           className={cn(
                             "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
                             notification.enabled ? "bg-accent" : "bg-border"
@@ -359,9 +389,10 @@ export default function SettingsPage() {
                         {["Light", "Dark", "System"].map((theme) => (
                           <button
                             key={theme}
+                            onClick={() => setSelectedTheme(theme)}
                             className={cn(
                               "p-4 rounded-lg border-2 transition-colors",
-                              theme === "System" ? "border-accent bg-accent/5" : "border-border hover:border-accent/50"
+                              selectedTheme === theme ? "border-accent bg-accent/5" : "border-border hover:border-accent/50"
                             )}
                           >
                             <div className={cn(

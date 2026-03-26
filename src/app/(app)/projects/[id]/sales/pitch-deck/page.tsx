@@ -28,7 +28,9 @@ import { Badge } from "@/components/ui/badge";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { SlidePanel } from "@/components/ui/slide-panel";
 import { Input } from "@/components/ui/input";
-import { getProjectById } from "@/data/mock-projects";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
+import { useProjectContext } from "@/contexts/project-context";
+import { useSEOAnalysis } from "@/hooks/use-llm";
 import { cn } from "@/lib/utils";
 
 const initialPitchDecks = [
@@ -93,7 +95,7 @@ const mockSlides = [
 export default function PitchDeckPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
 
   const [pitchDecks, setPitchDecks] = React.useState(initialPitchDecks);
   const [showPreviewModal, setShowPreviewModal] = React.useState(false);
@@ -113,6 +115,11 @@ export default function PitchDeckPage() {
     template: null as typeof templates[0] | null,
     aiGenerate: false,
   });
+  const [generatedContent, setGeneratedContent] = React.useState<string | null>(null);
+  const [showGeneratedContent, setShowGeneratedContent] = React.useState(false);
+
+  // LLM hook for AI generation
+  const { analyze, isLoading: llmLoading } = useSEOAnalysis();
 
   // Close dropdown when clicking outside
   React.useEffect(() => {
@@ -185,7 +192,21 @@ export default function PitchDeckPage() {
     setShowCreateModal(true);
   };
 
-  const handleGenerateDeck = () => {
+  const handleGenerateDeck = async () => {
+    if (newDeck.aiGenerate) {
+      try {
+        const result = await analyze('generateContent', {
+          topic: `Create a pitch deck outline for: "${newDeck.name || 'SEO Strategy Proposal'}" for project "${project?.name || ''}"`,
+          keywords: ['seo strategy', 'performance metrics', 'recommendations'],
+          contentType: 'landing' as const,
+        });
+        setGeneratedContent(result);
+        setShowGeneratedContent(true);
+      } catch {
+        // Error handled by hook
+      }
+    }
+
     const newDeckItem = {
       id: pitchDecks.length + 1,
       name: newDeck.name || "AI Generated Deck",
@@ -205,14 +226,22 @@ export default function PitchDeckPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Pitch Deck Generator</h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-text-primary">Pitch Deck Generator</h1>
+            <DataSourceIndicator
+              source="mock"
+              isLoading={false}
+              compact
+              showRefreshButton={false}
+            />
+          </div>
           <p className="text-text-secondary">
             Create AI-powered sales presentations and proposals
           </p>
         </div>
-        <Button variant="accent" onClick={handleCreateNew}>
+        <Button variant="accent" onClick={handleCreateNew} disabled={llmLoading}>
           <Sparkles className="h-4 w-4 mr-2" />
-          Generate New Deck
+          {llmLoading ? "Generating..." : "Generate New Deck"}
         </Button>
       </div>
 
@@ -593,10 +622,10 @@ export default function PitchDeckPage() {
             <Button variant="secondary" onClick={() => setShowCreateModal(false)}>
               Cancel
             </Button>
-            <Button 
-              variant="accent" 
+            <Button
+              variant="accent"
               onClick={handleGenerateDeck}
-              disabled={!newDeck.name.trim() && !newDeck.aiGenerate}
+              disabled={(!newDeck.name.trim() && !newDeck.aiGenerate) || llmLoading}
             >
               {newDeck.aiGenerate ? (
                 <>
@@ -762,6 +791,29 @@ export default function PitchDeckPage() {
               <Trash2 className="h-4 w-4 mr-2" />
               Delete
             </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
+
+      {/* AI Generated Content Modal */}
+      <Modal
+        isOpen={showGeneratedContent}
+        onClose={() => setShowGeneratedContent(false)}
+        title="AI-Generated Deck Content"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="h-4 w-4 text-accent" />
+              <span className="font-medium text-accent">AI-Generated Slide Content</span>
+            </div>
+            <div className="text-sm text-text-secondary whitespace-pre-wrap">
+              {generatedContent || "No content generated yet."}
+            </div>
+          </div>
+          <ModalFooter>
+            <Button variant="secondary" onClick={() => setShowGeneratedContent(false)}>Close</Button>
           </ModalFooter>
         </div>
       </Modal>

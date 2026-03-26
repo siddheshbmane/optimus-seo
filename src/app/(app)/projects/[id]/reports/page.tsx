@@ -23,7 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
 import { formatNumber, cn } from "@/lib/utils";
 
 const reportTypes = [
@@ -147,7 +147,7 @@ export default function ReportsOverviewPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
   
   const [showScheduleModal, setShowScheduleModal] = React.useState(false);
   const [showGenerateModal, setShowGenerateModal] = React.useState(false);

@@ -22,7 +22,7 @@ import nodemailer from 'nodemailer'
 // Check if demo mode is enabled
 export const DEMO_MODE = process.env.DEMO_MODE === 'true'
 export const DEMO_EMAIL = 'demo@optimus-seo.com'
-export const DEMO_PASSWORD = 'demo123'
+export const DEMO_PASSWORD = 'demo123!@#Secure'
 
 // Create Nodemailer transporter
 const createTransporter = () => {

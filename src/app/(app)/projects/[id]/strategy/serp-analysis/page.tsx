@@ -21,7 +21,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
+import { useSERPData } from "@/hooks/use-seo-data";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
 import { formatNumber, cn } from "@/lib/utils";
 
 const serpFeatures = [
@@ -95,8 +97,12 @@ const paaQuestions = [
 export default function SerpAnalysisPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
   const [searchKeyword, setSearchKeyword] = React.useState("");
+
+  // Fetch SERP data from API (with mock fallback)
+  const defaultKeywords = React.useMemo(() => serpAnalysis.map(s => s.keyword), []);
+  const { isLoading: serpLoading, source: serpSource, refetch: refetchSerp } = useSERPData(defaultKeywords);
 
   if (!project) return null;
 
@@ -105,7 +111,10 @@ export default function SerpAnalysisPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">SERP Analysis</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-text-primary">SERP Analysis</h1>
+            <DataSourceIndicator source={serpSource} isLoading={serpLoading} onRefresh={refetchSerp} compact />
+          </div>
           <p className="text-text-secondary">
             Analyze search results and find SERP feature opportunities
           </p>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/api/auth';
 import {
   createDashboard,
   listDashboards,
@@ -8,6 +9,7 @@ import {
 // GET - List dashboards or templates
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth();
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'dashboards';
     const organizationId = searchParams.get('organizationId') || undefined;
@@ -34,6 +36,7 @@ export async function GET(request: NextRequest) {
       data: dashboards,
     });
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error('Error listing dashboards:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to list dashboards' },
@@ -45,6 +48,7 @@ export async function GET(request: NextRequest) {
 // POST - Create dashboard
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth();
     const body = await request.json();
     const { name, description, layout, columns, organizationId, projectId, createdBy, widgets } = body;
     
@@ -71,6 +75,7 @@ export async function POST(request: NextRequest) {
       data: dashboard,
     });
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error('Error creating dashboard:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to create dashboard' },

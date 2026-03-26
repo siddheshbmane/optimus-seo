@@ -2,6 +2,7 @@
 // Triggers report generation and delivery
 
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/api/auth';
 import { realtimeEmitter, CHANNELS } from '@/lib/realtime/event-emitter';
 
 interface ExecuteReportRequest {
@@ -13,6 +14,7 @@ interface ExecuteReportRequest {
 // POST - Execute a report immediately
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth();
     const body: ExecuteReportRequest = await request.json();
     const { reportId, format = 'pdf', sendEmail = true } = body;
 
@@ -60,6 +62,7 @@ export async function POST(request: NextRequest) {
       message: 'Report generation started',
     });
   } catch (error) {
+    if (error instanceof Response) return error;
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to execute report' },
       { status: 500 }

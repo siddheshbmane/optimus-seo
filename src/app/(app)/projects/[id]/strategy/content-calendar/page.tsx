@@ -26,7 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { SlidePanel } from "@/components/ui/slide-panel";
 import { Input } from "@/components/ui/input";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
 import { cn } from "@/lib/utils";
 
 type ViewMode = "calendar" | "list";
@@ -134,7 +134,7 @@ const typeConfig = {
 export default function ContentCalendarPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
 
   const [contentItems, setContentItems] = React.useState(initialContentItems);
   const [viewMode, setViewMode] = React.useState<ViewMode>("calendar");

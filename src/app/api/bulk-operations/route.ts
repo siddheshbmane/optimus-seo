@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/api/auth';
 import {
   createBulkOperation,
   listOperations,
@@ -10,6 +11,7 @@ import {
 // GET - List all bulk operations
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth();
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId') || undefined;
     
@@ -21,6 +23,7 @@ export async function GET(request: NextRequest) {
       count: operations.length,
     });
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error('Error listing bulk operations:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to list operations' },
@@ -32,6 +35,7 @@ export async function GET(request: NextRequest) {
 // POST - Create a new bulk operation
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth();
     const body = await request.json();
     const { type, input, projectId, userId } = body;
     
@@ -84,6 +88,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error('Error creating bulk operation:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to create operation' },

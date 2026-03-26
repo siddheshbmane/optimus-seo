@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { auth, DEMO_MODE, DEMO_EMAIL, DEMO_PASSWORD } from '@/lib/auth'
+import { DEMO_MODE } from '@/lib/auth'
+import { randomUUID } from 'crypto'
+
+const DEMO_EMAIL = 'demo@optimus-seo.com'
+const DEV_ORG_ID = '00000000-0000-0000-0000-000000000001'
 
 export async function POST(request: NextRequest) {
-  // Check if demo mode is enabled
   if (!DEMO_MODE) {
     return NextResponse.json(
       { error: 'Demo mode is not enabled' },
@@ -12,92 +15,66 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Ensure demo organization exists
+    // Ensure dev organization exists (matches seed.ts)
     let demoOrg = await prisma.organization.findUnique({
-      where: { slug: 'demo-org' },
+      where: { id: DEV_ORG_ID },
     })
 
     if (!demoOrg) {
       demoOrg = await prisma.organization.create({
         data: {
-          name: 'Demo Organization',
-          slug: 'demo-org',
+          id: DEV_ORG_ID,
+          name: 'Development Organization',
+          slug: 'dev-org',
         },
       })
     }
 
-    // Check if demo user exists
-    const existingUser = await prisma.user.findUnique({
+    // Find or create demo user
+    let demoUser = await prisma.user.findUnique({
       where: { email: DEMO_EMAIL },
     })
 
-    if (!existingUser) {
-      // Create demo user through Better Auth's signUp (creates User + Account properly)
-      try {
-        await auth.api.signUpEmail({
-          body: {
-            email: DEMO_EMAIL,
-            password: DEMO_PASSWORD,
-            name: 'Demo User',
-          },
-        })
-      } catch (signupError) {
-        console.log('Demo user signup attempt:', signupError)
-      }
-
-      // Link demo user to demo org
-      const newUser = await prisma.user.findUnique({
-        where: { email: DEMO_EMAIL },
+    if (!demoUser) {
+      demoUser = await prisma.user.create({
+        data: {
+          email: DEMO_EMAIL,
+          name: 'Demo User',
+          emailVerified: true,
+          organizationId: demoOrg.id,
+          role: 'admin',
+        },
       })
-      if (newUser) {
-        await prisma.user.update({
-          where: { id: newUser.id },
-          data: { organizationId: demoOrg.id, role: 'admin' },
-        })
-      }
-
-      // Create a demo project
-      if (newUser) {
-        const existingProject = await prisma.project.findFirst({
-          where: { organizationId: demoOrg.id },
-        })
-        if (!existingProject) {
-          await prisma.project.create({
-            data: {
-              name: 'Demo Website',
-              clientUrl: 'https://demo-website.com',
-              organizationId: demoOrg.id,
-              createdById: newUser.id,
-              status: 'created',
-            },
-          })
-        }
-      }
     }
 
-    // Sign in through Better Auth with asResponse to get proper Set-Cookie headers
-    const signInResponse = await auth.api.signInEmail({
-      body: {
-        email: DEMO_EMAIL,
-        password: DEMO_PASSWORD,
-      },
-      asResponse: true,
-    })
+    // Create a fresh session directly in the database
+    const sessionToken = randomUUID()
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
-    // Clone the response to read body while preserving headers
-    const authData = await signInResponse.json()
+    await prisma.session.create({
+      data: {
+        token: sessionToken,
+        userId: demoUser.id,
+        expiresAt,
+        ipAddress: request.headers.get('x-forwarded-for') || '127.0.0.1',
+        userAgent: request.headers.get('user-agent') || 'demo-browser',
+      },
+    })
 
     const response = NextResponse.json({
       success: true,
-      user: authData.user || { email: DEMO_EMAIL, name: 'Demo User' },
+      user: { email: demoUser.email, name: demoUser.name },
       redirectTo: '/dashboard',
     })
 
-    // Forward all Set-Cookie headers from Better Auth's response
-    const setCookies = signInResponse.headers.getSetCookie?.() || []
-    for (const cookie of setCookies) {
-      response.headers.append('Set-Cookie', cookie)
-    }
+    // Set session cookie (matching Better Auth's cookie format: optimus.session_token)
+    response.cookies.set('optimus.session_token', sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      expires: expiresAt,
+    })
 
     return response
   } catch (error) {

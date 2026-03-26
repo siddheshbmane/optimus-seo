@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/api/auth';
 import {
   createWebhook,
   listWebhooks,
@@ -10,6 +11,7 @@ import {
 // GET - List webhooks
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth();
     const { searchParams } = new URL(request.url);
     const organizationId = searchParams.get('organizationId') || undefined;
     
@@ -26,6 +28,7 @@ export async function GET(request: NextRequest) {
       data: safeWebhooks,
     });
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error('Error listing webhooks:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to list webhooks' },
@@ -37,6 +40,7 @@ export async function GET(request: NextRequest) {
 // POST - Create webhook or trigger event
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth();
     const body = await request.json();
     const { action } = body;
     
@@ -115,6 +119,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error('Error in webhooks API:', error);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },

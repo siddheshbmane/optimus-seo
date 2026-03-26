@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/api/auth';
 import {
   roleDefinitions,
   listUsersByOrganization,
@@ -10,6 +11,7 @@ import {
 // GET - List roles or users
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth();
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'roles';
     const organizationId = searchParams.get('organizationId');
@@ -53,6 +55,7 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error('Error in permissions API:', error);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
@@ -64,6 +67,7 @@ export async function GET(request: NextRequest) {
 // POST - Create or update user role
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth();
     const body = await request.json();
     const { userId, email, name, role, organizationId, projectIds } = body;
     
@@ -100,6 +104,7 @@ export async function POST(request: NextRequest) {
       data: userRole,
     });
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error('Error creating user role:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to create user role' },

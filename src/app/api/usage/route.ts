@@ -2,7 +2,8 @@
 // Returns API usage statistics and rate limit status
 
 import { NextRequest, NextResponse } from 'next/server';
-import { 
+import { requireAuth } from '@/lib/api/auth';
+import {
   getUsageSummary, 
   getRateLimitStatus,
   trackAPIUsage,
@@ -11,23 +12,30 @@ import {
 
 // GET - Get usage statistics
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const provider = searchParams.get('provider') || undefined;
-  const period = (searchParams.get('period') || 'day') as 'hour' | 'day' | 'week' | 'month';
+  try {
+    await requireAuth();
+    const { searchParams } = new URL(request.url);
+    const provider = searchParams.get('provider') || undefined;
+    const period = (searchParams.get('period') || 'day') as 'hour' | 'day' | 'week' | 'month';
 
-  const summary = getUsageSummary(provider, period);
-  const rateLimits = getRateLimitStatus();
+    const summary = getUsageSummary(provider, period);
+    const rateLimits = getRateLimitStatus();
 
-  return NextResponse.json({
-    summary,
-    rateLimits,
-    timestamp: new Date().toISOString(),
-  });
+    return NextResponse.json({
+      summary,
+      rateLimits,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof Response) return error;
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }
 
 // POST - Track new API usage
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth();
     const body = await request.json();
     
     // Check rate limit first
@@ -57,6 +65,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ record });
   } catch (error) {
+    if (error instanceof Response) return error;
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to track usage' },
       { status: 400 }

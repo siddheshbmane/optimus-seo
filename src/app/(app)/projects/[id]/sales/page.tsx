@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Search,
@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
 import { formatNumber, cn } from "@/lib/utils";
 
 const salesTools = [
@@ -186,8 +186,10 @@ const recentActivity = [
 export default function SalesOverviewPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const router = useRouter();
+  const { project } = useProjectContext();
 
+  // Project is guaranteed by layout, but TypeScript needs this check
   if (!project) return null;
 
   return (
@@ -200,7 +202,11 @@ export default function SalesOverviewPage() {
             Research and analysis tools to win new clients
           </p>
         </div>
-        <Button variant="accent" className="w-full sm:w-auto">
+        <Button
+          variant="accent"
+          className="w-full sm:w-auto"
+          onClick={() => router.push(`/projects/${projectId}/sales/site-audit`)}
+        >
           <Sparkles className="h-4 w-4 mr-2" />
           Run Full Analysis
         </Button>

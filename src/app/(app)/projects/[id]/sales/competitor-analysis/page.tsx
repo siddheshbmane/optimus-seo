@@ -35,7 +35,6 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalFooter } from "@/components/ui/modal";
-import { getProjectById } from "@/data/mock-projects";
 import {
   mockCompetitors,
   mockKeywordGaps,
@@ -54,7 +53,12 @@ import {
   type BacklinkGap,
   type SERPBattle,
 } from "@/data/mock-competitors";
+import { useCompetitorData } from "@/hooks/use-seo-data";
+import { useProjectContext } from "@/contexts/project-context";
+import { useProjectConfig } from "@/contexts/project-config-context";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
 import { formatNumber, getDifficultyColor, cn } from "@/lib/utils";
+import { exportCompetitors, type CompetitorExportData } from "@/lib/export";
 import {
   LineChart,
   Line,
@@ -95,7 +99,8 @@ const COLORS = ['#FD8C73', '#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'
 export default function CompetitorAnalysisPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
+  const { config, addCompetitor: addCompetitorToConfig, addKeyword } = useProjectConfig();
 
   const [activeTab, setActiveTab] = React.useState<TabType>("overview");
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -114,11 +119,41 @@ export default function CompetitorAnalysisPage() {
   const [selectedKeyword, setSelectedKeyword] = React.useState<KeywordGap | null>(null);
   const [selectedContent, setSelectedContent] = React.useState<ContentGap | null>(null);
   const [selectedBacklink, setSelectedBacklink] = React.useState<BacklinkGap | null>(null);
+  const [exportFormat, setExportFormat] = React.useState<"csv" | "json" | "html">("html");
   
   // New competitor form
   const [newCompetitorUrl, setNewCompetitorUrl] = React.useState("");
 
+  // Fetch competitor data from API (with mock fallback)
+  const { data: apiCompetitors, isLoading: competitorsLoading, source: competitorsSource, refetch: refetchCompetitors } = useCompetitorData(
+    project?.url || '',
+    project?.locationCode || 2840
+  );
+
   if (!project) return null;
+
+  // Transform API competitors to match Competitor type, or use mock data
+  const competitors: Competitor[] = React.useMemo(() => {
+    if (apiCompetitors && apiCompetitors.length > 0) {
+      return apiCompetitors.map((comp, index) => ({
+        id: `comp-${index + 1}`,
+        name: comp.domain.replace(/\.(com|co|io|org|net)$/, '').split('.').pop() || comp.domain,
+        url: comp.domain,
+        domainRating: comp.domainAuthority,
+        drChange: 0, // Not available from API
+        organicTraffic: comp.traffic,
+        trafficChange: 0, // Not available from API
+        keywords: comp.keywords,
+        keywordsChange: 0, // Not available from API
+        backlinks: comp.backlinks,
+        backlinksChange: 0, // Not available from API
+        topKeywords: [], // Not available from API
+        marketShare: Math.round(comp.visibility / 10), // Estimate from visibility
+        aiVisibilityScore: comp.visibility,
+      }));
+    }
+    return mockCompetitors;
+  }, [apiCompetitors]);
 
   const keywordOverlap = getKeywordOverlap();
   const marketShareData = getMarketShareData();
@@ -160,7 +195,7 @@ export default function CompetitorAnalysisPage() {
       { metric: 'Traffic (K)', you: yourSiteData.organicTraffic / 1000, competitor: comparison.traffic.avg / 1000 },
       { metric: 'Keywords (K)', you: yourSiteData.keywords / 1000, competitor: comparison.keywords.avg / 1000 },
       { metric: 'Backlinks (K)', you: yourSiteData.backlinks / 1000, competitor: comparison.backlinks.avg / 1000 },
-      { metric: 'AI Visibility', you: yourSiteData.aiVisibilityScore, competitor: mockCompetitors.reduce((s, c) => s + c.aiVisibilityScore, 0) / mockCompetitors.length },
+      { metric: 'AI Visibility', you: yourSiteData.aiVisibilityScore, competitor: competitors.reduce((s, c) => s + c.aiVisibilityScore, 0) / competitors.length },
     ];
 
     return (
@@ -169,8 +204,8 @@ export default function CompetitorAnalysisPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             label="Competitors Tracked"
-            value={mockCompetitors.length}
-            trendLabel="active competitors"
+            value={competitors.length}
+            trendLabel={competitorsSource === 'api' ? 'live data' : 'active competitors'}
             icon={<Users className="h-5 w-5" />}
           />
           <StatCard
@@ -329,7 +364,7 @@ export default function CompetitorAnalysisPage() {
                     <td className="p-4 text-center font-semibold text-accent">{yourSiteData.marketShare}%</td>
                   </tr>
                   {/* Competitors */}
-                  {mockCompetitors.map((competitor) => (
+                  {competitors.map((competitor) => (
                     <tr
                       key={competitor.id}
                       onClick={() => {
@@ -752,17 +787,17 @@ export default function CompetitorAnalysisPage() {
         />
         <StatCard
           label="Top Competitor"
-          value={formatNumber(Math.max(...mockCompetitors.map(c => c.organicTraffic)))}
+          value={formatNumber(Math.max(...competitors.map(c => c.organicTraffic)))}
           icon={<Trophy className="h-5 w-5" />}
         />
         <StatCard
           label="Avg. Competitor"
-          value={formatNumber(Math.round(mockCompetitors.reduce((s, c) => s + c.organicTraffic, 0) / mockCompetitors.length))}
+          value={formatNumber(Math.round(competitors.reduce((s, c) => s + c.organicTraffic, 0) / competitors.length))}
           icon={<Users className="h-5 w-5" />}
         />
         <StatCard
           label="Traffic Gap"
-          value={formatNumber(Math.max(...mockCompetitors.map(c => c.organicTraffic)) - yourSiteData.organicTraffic)}
+          value={formatNumber(Math.max(...competitors.map(c => c.organicTraffic)) - yourSiteData.organicTraffic)}
           trendLabel="to #1 competitor"
           icon={<TrendingUp className="h-5 w-5" />}
         />
@@ -818,14 +853,14 @@ export default function CompetitorAnalysisPage() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={[
                 { name: 'Your Site', growth: yourSiteData.trafficChange },
-                ...mockCompetitors.map(c => ({ name: c.name, growth: c.trafficChange }))
+                ...competitors.map(c => ({ name: c.name, growth: c.trafficChange }))
               ]}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                 <XAxis dataKey="name" tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }} />
                 <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 12 }} />
                 <Tooltip />
                 <Bar dataKey="growth" name="Growth %" radius={[4, 4, 0, 0]}>
-                  {[yourSiteData, ...mockCompetitors].map((_, index) => (
+                  {[yourSiteData, ...competitors].map((_, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Bar>
@@ -1061,13 +1096,17 @@ export default function CompetitorAnalysisPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Competitive Intelligence War Room</h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-text-primary">Competitive Intelligence War Room</h1>
+            <DataSourceIndicator source={competitorsSource} isLoading={competitorsLoading} onRefresh={refetchCompetitors} compact />
+          </div>
           <p className="text-text-secondary">
             Analyze competitors and identify opportunities to outrank them
+            {config?.competitors.length ? ` • ${config.competitors.length} tracked` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary">
+          <Button variant="secondary" onClick={() => refetchCompetitors()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh Data
           </Button>
@@ -1124,7 +1163,16 @@ export default function CompetitorAnalysisPage() {
           </div>
           <ModalFooter>
             <Button variant="secondary" onClick={() => setShowAddCompetitor(false)}>Cancel</Button>
-            <Button variant="accent" disabled={!newCompetitorUrl.trim()}>
+            <Button
+              variant="accent"
+              disabled={!newCompetitorUrl.trim()}
+              onClick={() => {
+                addCompetitorToConfig(newCompetitorUrl.trim());
+                setNewCompetitorUrl("");
+                setShowAddCompetitor(false);
+                refetchCompetitors();
+              }}
+            >
               <Plus className="h-4 w-4 mr-2" />
               Add Competitor
             </Button>
@@ -1217,9 +1265,17 @@ export default function CompetitorAnalysisPage() {
             </div>
             <ModalFooter>
               <Button variant="secondary" onClick={() => setShowKeywordDetail(false)}>Close</Button>
-              <Button variant="accent">
+              <Button
+                variant="accent"
+                onClick={() => {
+                  if (selectedKeyword) {
+                    addKeyword(selectedKeyword.keyword);
+                    setShowKeywordDetail(false);
+                  }
+                }}
+              >
                 <Plus className="h-4 w-4 mr-2" />
-                Add to Strategy
+                Add to Tracking
               </Button>
             </ModalFooter>
           </div>
@@ -1325,7 +1381,7 @@ export default function CompetitorAnalysisPage() {
       <Modal
         isOpen={showStrategyExport}
         onClose={() => setShowStrategyExport(false)}
-        title="Export Competitive Strategy"
+        title="Export Competitor Analysis"
         size="md"
       >
         <div className="space-y-4">
@@ -1333,13 +1389,19 @@ export default function CompetitorAnalysisPage() {
             <label className="block text-sm font-medium text-text-primary mb-3">Export Format</label>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { value: "pdf", label: "PDF", desc: "Presentation ready" },
-                { value: "docx", label: "Word", desc: "Editable document" },
-                { value: "csv", label: "CSV", desc: "Data export" },
+                { value: "html" as const, label: "HTML", desc: "Print-ready report" },
+                { value: "csv" as const, label: "CSV", desc: "Spreadsheet" },
+                { value: "json" as const, label: "JSON", desc: "Structured data" },
               ].map((format) => (
                 <button
                   key={format.value}
-                  className="p-4 rounded-lg border border-border hover:border-accent/50 text-left transition-colors"
+                  onClick={() => setExportFormat(format.value)}
+                  className={cn(
+                    "p-4 rounded-lg border text-left transition-colors",
+                    exportFormat === format.value 
+                      ? "border-accent bg-accent/10" 
+                      : "border-border hover:border-accent/50"
+                  )}
                 >
                   <p className="font-medium text-text-primary">{format.label}</p>
                   <p className="text-xs text-text-muted mt-1">{format.desc}</p>
@@ -1349,9 +1411,30 @@ export default function CompetitorAnalysisPage() {
           </div>
           <ModalFooter>
             <Button variant="secondary" onClick={() => setShowStrategyExport(false)}>Cancel</Button>
-            <Button variant="accent">
+            <Button 
+              variant="accent"
+              onClick={() => {
+                // Transform competitors to export format
+                const exportData: CompetitorExportData[] = mockCompetitors.map(comp => ({
+                  name: comp.name,
+                  url: comp.url,
+                  domainRating: comp.domainRating,
+                  organicTraffic: comp.organicTraffic,
+                  keywords: comp.keywords,
+                  backlinks: comp.backlinks,
+                  marketShare: comp.marketShare,
+                }));
+                
+                // Export with selected format
+                const filename = `competitors-${project?.name || 'export'}-${new Date().toISOString().split('T')[0]}`;
+                exportCompetitors(exportData, exportFormat, filename);
+                
+                // Close modal
+                setShowStrategyExport(false);
+              }}
+            >
               <Download className="h-4 w-4 mr-2" />
-              Export
+              Export {mockCompetitors.length} Competitors
             </Button>
           </ModalFooter>
         </div>

@@ -35,7 +35,10 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalFooter } from "@/components/ui/modal";
-import { getProjectById } from "@/data/mock-projects";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
+import { useProjectContext } from "@/contexts/project-context";
+import { useSiteAuditData } from "@/hooks/use-seo-data";
+import { useSEOAnalysis } from "@/hooks/use-llm";
 import { formatNumber, getDifficultyColor, cn } from "@/lib/utils";
 import {
   LineChart,
@@ -128,13 +131,57 @@ const mockRevenueTrend = [
 export default function EcommerceSEOPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
 
   const [activeTab, setActiveTab] = React.useState<TabType>("overview");
   const [searchQuery, setSearchQuery] = React.useState("");
   const [showProductDetail, setShowProductDetail] = React.useState(false);
   const [selectedProduct, setSelectedProduct] = React.useState<typeof mockProducts[0] | null>(null);
   const [showSchemaGenerator, setShowSchemaGenerator] = React.useState(false);
+  const [isSyncing, setIsSyncing] = React.useState(false);
+  const [optimizeResult, setOptimizeResult] = React.useState<string | null>(null);
+  const [showOptimizeResult, setShowOptimizeResult] = React.useState(false);
+
+  // Data hooks
+  const { isLoading: auditLoading, source: auditSource, refetch: refetchAudit } = useSiteAuditData(
+    project?.url || ''
+  );
+  const { analyze, isLoading: llmLoading } = useSEOAnalysis();
+
+  const handleSyncProducts = React.useCallback(async () => {
+    setIsSyncing(true);
+    await refetchAudit();
+    setIsSyncing(false);
+  }, [refetchAudit]);
+
+  const handleBulkOptimize = React.useCallback(async () => {
+    try {
+      const result = await analyze('generateContent', {
+        topic: 'E-commerce product page SEO optimization strategy',
+        keywords: ['product seo', 'schema markup', 'rich results'],
+        contentType: 'landing' as const,
+      });
+      setOptimizeResult(result);
+      setShowOptimizeResult(true);
+    } catch {
+      // Error handled by hook
+    }
+  }, [analyze]);
+
+  const handleGenerateSchema = React.useCallback(async () => {
+    try {
+      const result = await analyze('generateContent', {
+        topic: 'Generate Product schema markup (JSON-LD) for e-commerce products',
+        keywords: ['product schema', 'structured data', 'rich snippets'],
+        contentType: 'meta' as const,
+      });
+      setOptimizeResult(result);
+      setShowOptimizeResult(true);
+      setShowSchemaGenerator(false);
+    } catch {
+      // Error handled by hook
+    }
+  }, [analyze]);
 
   if (!project) return null;
 
@@ -640,22 +687,30 @@ export default function EcommerceSEOPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            <ShoppingCart className="h-7 w-7 text-accent" />
-            E-Commerce SEO
-          </h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+              <ShoppingCart className="h-7 w-7 text-accent" />
+              E-Commerce SEO
+            </h1>
+            <DataSourceIndicator
+              source={auditSource}
+              isLoading={auditLoading}
+              onRefresh={refetchAudit}
+              compact
+            />
+          </div>
           <p className="text-text-secondary">
             Optimize your product pages and increase organic revenue
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary">
-            <RefreshCw className="h-4 w-4 mr-2" />
+          <Button variant="secondary" onClick={handleSyncProducts} disabled={isSyncing}>
+            <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
             Sync Products
           </Button>
-          <Button variant="accent">
+          <Button variant="accent" onClick={handleBulkOptimize} disabled={llmLoading}>
             <Sparkles className="h-4 w-4 mr-2" />
-            Bulk Optimize
+            {llmLoading ? "Optimizing..." : "Bulk Optimize"}
           </Button>
         </div>
       </div>
@@ -725,9 +780,25 @@ export default function EcommerceSEOPage() {
             </div>
             <ModalFooter>
               <Button variant="secondary" onClick={() => setShowProductDetail(false)}>Close</Button>
-              <Button variant="accent">
+              <Button
+                variant="accent"
+                disabled={llmLoading}
+                onClick={async () => {
+                  try {
+                    const result = await analyze('generateContent', {
+                      topic: `Optimize product page SEO for: "${selectedProduct.name}"`,
+                      keywords: [selectedProduct.name.toLowerCase(), selectedProduct.category.toLowerCase()],
+                      contentType: 'product' as const,
+                    });
+                    setOptimizeResult(result);
+                    setShowOptimizeResult(true);
+                  } catch {
+                    // Error handled by hook
+                  }
+                }}
+              >
                 <Sparkles className="h-4 w-4 mr-2" />
-                Optimize Product
+                {llmLoading ? "Optimizing..." : "Optimize Product"}
               </Button>
             </ModalFooter>
           </div>
@@ -750,10 +821,32 @@ export default function EcommerceSEOPage() {
           </div>
           <ModalFooter>
             <Button variant="secondary" onClick={() => setShowSchemaGenerator(false)}>Cancel</Button>
-            <Button variant="accent">
+            <Button variant="accent" onClick={handleGenerateSchema} disabled={llmLoading}>
               <Sparkles className="h-4 w-4 mr-2" />
-              Generate All
+              {llmLoading ? "Generating..." : "Generate All"}
             </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showOptimizeResult}
+        onClose={() => setShowOptimizeResult(false)}
+        title="AI Optimization Suggestions"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="h-4 w-4 text-accent" />
+              <span className="font-medium text-accent">AI-Generated Suggestions</span>
+            </div>
+            <div className="text-sm text-text-secondary whitespace-pre-wrap">
+              {optimizeResult || "No suggestions generated yet."}
+            </div>
+          </div>
+          <ModalFooter>
+            <Button variant="secondary" onClick={() => setShowOptimizeResult(false)}>Close</Button>
           </ModalFooter>
         </div>
       </Modal>

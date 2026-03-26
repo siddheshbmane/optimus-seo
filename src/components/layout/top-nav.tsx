@@ -23,10 +23,12 @@ import {
   AlertCircle,
   Clock,
   Loader2,
+  FlaskConical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "next-themes";
 import { useSession, signOut } from "@/lib/auth/client";
+import { useDemoMode } from "@/contexts/demo-mode-context";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -149,7 +151,14 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
     return pathname.startsWith(href);
   };
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const [notificationList, setNotificationList] = React.useState(notifications);
+  const unreadCount = notificationList.filter((n) => !n.read).length;
+
+  const handleMarkAllRead = () => {
+    setNotificationList((prev) =>
+      prev.map((n) => ({ ...n, read: true }))
+    );
+  };
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -258,12 +267,12 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
                 <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-bg-card border border-border rounded-lg shadow-xl z-50">
                   <div className="flex items-center justify-between p-3 border-b border-border">
                     <h3 className="font-semibold text-text-primary">Notifications</h3>
-                    <Button variant="ghost" size="sm" className="text-xs">
+                    <Button variant="ghost" size="sm" className="text-xs" onClick={handleMarkAllRead}>
                       Mark all read
                     </Button>
                   </div>
                   <div className="max-h-[60vh] sm:max-h-[400px] overflow-y-auto">
-                    {notifications.map((notification) => (
+                    {notificationList.map((notification) => (
                       <div
                         key={notification.id}
                         className={cn(
@@ -306,6 +315,9 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
                 </div>
               )}
             </div>
+
+            {/* Demo Mode Toggle */}
+            <DemoModeToggle />
 
             {/* Theme Toggle */}
             {mounted && (
@@ -403,5 +415,47 @@ export function TopNav({ onCommandPaletteOpen }: TopNavProps) {
         </div>
       </header>
     </>
+  );
+}
+
+// Demo Mode Toggle Component
+function DemoModeToggle() {
+  const { isDemoMode, toggleDemoMode } = useDemoMode();
+  const [showTooltip, setShowTooltip] = React.useState(false);
+
+  return (
+    <div className="relative">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={toggleDemoMode}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        className={cn(
+          "relative",
+          isDemoMode && "text-accent bg-accent/10"
+        )}
+        title={isDemoMode ? "Demo Mode ON - Click to show real data" : "Demo Mode OFF - Click to show demo data"}
+      >
+        <FlaskConical className="h-4 w-4" />
+        {isDemoMode && (
+          <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-accent" />
+        )}
+      </Button>
+      
+      {/* Tooltip */}
+      {showTooltip && (
+        <div className="absolute right-0 top-full mt-2 w-48 p-2 bg-bg-card border border-border rounded-lg shadow-lg z-50 text-xs">
+          <p className="font-medium text-text-primary">
+            {isDemoMode ? "Demo Mode: ON" : "Demo Mode: OFF"}
+          </p>
+          <p className="text-text-muted mt-1">
+            {isDemoMode 
+              ? "Showing sample data. Click to show your real projects." 
+              : "Showing your real data. Click to see demo projects."}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }

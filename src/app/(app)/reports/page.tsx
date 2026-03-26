@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   BarChart3,
@@ -105,6 +106,17 @@ const scheduledReports = [
 ];
 
 export default function GlobalReportsPage() {
+  const router = useRouter();
+
+  // Pre-generate stable report counts to avoid SSR/client hydration mismatch from Math.random() in JSX
+  const [reportCounts, setReportCounts] = React.useState<number[]>([]);
+
+  React.useEffect(() => {
+    setReportCounts(
+      mockProjects.slice(0, 6).map(() => Math.floor(Math.random() * 20) + 5)
+    );
+  }, []);
+
   return (
     <div className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4 space-y-6">
       {/* Header */}
@@ -116,11 +128,26 @@ export default function GlobalReportsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" className="sm:size-md">
+          <Button
+            variant="secondary"
+            size="sm"
+            className=""
+            onClick={() => router.push("/settings")}
+          >
             <Calendar className="h-4 w-4 mr-2" />
             <span className="hidden sm:inline">Schedule</span>
           </Button>
-          <Button variant="accent" size="sm" className="sm:size-md">
+          <Button
+            variant="accent"
+            size="sm"
+            className=""
+            onClick={() => {
+              const firstProject = mockProjects[0];
+              if (firstProject) {
+                router.push(`/projects/${firstProject.id}/reports`);
+              }
+            }}
+          >
             <FileText className="h-4 w-4 mr-2" />
             <span className="hidden sm:inline">Generate</span>
           </Button>
@@ -163,7 +190,7 @@ export default function GlobalReportsPage() {
           Project Reports
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mockProjects.slice(0, 6).map((project) => (
+          {mockProjects.slice(0, 6).map((project, index) => (
             <Link key={project.id} href={`/projects/${project.id}/reports`}>
               <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full">
                 <CardContent className="p-4">
@@ -179,7 +206,7 @@ export default function GlobalReportsPage() {
                         {project.url.replace('https://', '')}
                       </p>
                       <div className="flex items-center gap-2 text-xs text-text-secondary">
-                        <span>{Math.floor(Math.random() * 20) + 5} reports</span>
+                        <span>{reportCounts[index] ?? 0} reports</span>
                         <span>•</span>
                         <span>Last: 2 days ago</span>
                       </div>

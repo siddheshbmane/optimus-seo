@@ -17,7 +17,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
+import { useContentIdeas } from "@/hooks/use-seo-data";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
 import { formatNumber, cn } from "@/lib/utils";
 
 const contentPages = [
@@ -90,7 +92,12 @@ const optimizationSuggestions = [
 export default function ContentOptimizationPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
+
+  // Fetch content ideas from API (with mock fallback)
+  const { isLoading: contentLoading, source: contentSource, refetch: refetchContent } = useContentIdeas(
+    project?.url || ''
+  );
 
   if (!project) return null;
 
@@ -103,7 +110,10 @@ export default function ContentOptimizationPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Content Optimization</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-text-primary">Content Optimization</h1>
+            <DataSourceIndicator source={contentSource} isLoading={contentLoading} onRefresh={refetchContent} compact />
+          </div>
           <p className="text-text-secondary">
             Analyze and optimize your content for better rankings
           </p>

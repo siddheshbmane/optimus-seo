@@ -19,6 +19,7 @@ import {
   X,
   Save,
   Trash2,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,7 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { SlidePanel } from "@/components/ui/slide-panel";
 import { Input } from "@/components/ui/input";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
 import { formatNumber, cn } from "@/lib/utils";
 
 interface Proposal {
@@ -119,7 +120,7 @@ const statusConfig = {
 export default function ProposalGeneratorPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
   
   const [proposals, setProposals] = React.useState(initialProposals);
   const [showNewProposalModal, setShowNewProposalModal] = React.useState(false);
@@ -134,6 +135,8 @@ export default function ProposalGeneratorPage() {
     value: 0,
     template: "",
   });
+  const [isGeneratingProposal, setIsGeneratingProposal] = React.useState(false);
+  const [generatedProposalContent, setGeneratedProposalContent] = React.useState("");
 
   if (!project) return null;
 
@@ -141,8 +144,40 @@ export default function ProposalGeneratorPage() {
   const acceptedValue = proposals.filter(p => p.status === "accepted").reduce((sum, p) => sum + p.value, 0);
   const pendingValue = proposals.filter(p => ["sent", "viewed"].includes(p.status)).reduce((sum, p) => sum + p.value, 0);
 
-  const handleCreateProposal = () => {
+  const handleGenerateProposal = async (clientName: string, sections: string[]) => {
+    setIsGeneratingProposal(true);
+    setGeneratedProposalContent("");
+    try {
+      const response = await fetch("/api/llm/seo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generateContent",
+          params: {
+            topic: `SEO Proposal for ${clientName}: ${sections.join(", ")}`,
+            keywords: ["seo proposal", "seo services"],
+            contentType: "landing",
+          },
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to generate proposal content");
+      }
+      setGeneratedProposalContent(data.result || "");
+    } catch (err) {
+      console.error("Proposal generation error:", err);
+      setGeneratedProposalContent(
+        "Unable to generate proposal content. Please check your LLM configuration and try again."
+      );
+    } finally {
+      setIsGeneratingProposal(false);
+    }
+  };
+
+  const handleCreateProposal = async () => {
     const template = proposalTemplates.find(t => t.name === newProposal.template);
+    const sections = template?.sections || ["Executive Summary", "Pricing"];
     const proposal: Proposal = {
       id: proposals.length + 1,
       name: newProposal.name,
@@ -152,11 +187,16 @@ export default function ProposalGeneratorPage() {
       createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
       sentAt: null,
       expiresAt: null,
-      sections: template?.sections || ["Executive Summary", "Pricing"],
+      sections,
     };
     setProposals([proposal, ...proposals]);
     setShowNewProposalModal(false);
     setNewProposal({ name: "", client: "", value: 0, template: "" });
+
+    // Trigger LLM generation and open view modal to show result
+    setSelectedProposal(proposal);
+    setShowViewModal(true);
+    await handleGenerateProposal(proposal.client, sections);
   };
 
   const handleViewProposal = (proposal: Proposal) => {
@@ -408,9 +448,17 @@ export default function ProposalGeneratorPage() {
             <Button variant="secondary" onClick={() => setShowNewProposalModal(false)}>
               Cancel
             </Button>
-            <Button variant="accent" onClick={handleCreateProposal}>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Generate Proposal
+            <Button
+              variant="accent"
+              onClick={handleCreateProposal}
+              disabled={isGeneratingProposal || !newProposal.name || !newProposal.client}
+            >
+              {isGeneratingProposal ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-2" />
+              )}
+              {isGeneratingProposal ? "Generating..." : "Generate Proposal"}
             </Button>
           </ModalFooter>
         </div>
@@ -419,7 +467,7 @@ export default function ProposalGeneratorPage() {
       {/* View Proposal Modal */}
       <Modal
         isOpen={showViewModal}
-        onClose={() => { setShowViewModal(false); setSelectedProposal(null); }}
+        onClose={() => { setShowViewModal(false); setSelectedProposal(null); setGeneratedProposalContent(""); }}
         title={selectedProposal?.name || "Proposal Preview"}
         size="lg"
       >
@@ -435,7 +483,7 @@ export default function ProposalGeneratorPage() {
                 <p className="font-mono font-bold text-text-primary">${formatNumber(selectedProposal.value)}</p>
               </div>
             </div>
-            
+
             <div>
               <p className="text-sm font-medium text-text-muted mb-2">Sections</p>
               <div className="space-y-2">
@@ -449,7 +497,67 @@ export default function ProposalGeneratorPage() {
                 ))}
               </div>
             </div>
-            
+
+            {/* AI-Generated Content Section */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-text-muted">AI-Generated Content</p>
+                <div className="flex items-center gap-2">
+                  {generatedProposalContent && !isGeneratingProposal && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedProposalContent);
+                      }}
+                    >
+                      <Copy className="h-4 w-4 mr-1" />
+                      Copy
+                    </Button>
+                  )}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={isGeneratingProposal}
+                    onClick={() =>
+                      handleGenerateProposal(
+                        selectedProposal.client,
+                        selectedProposal.sections
+                      )
+                    }
+                  >
+                    {isGeneratingProposal ? (
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4 mr-1" />
+                    )}
+                    {isGeneratingProposal ? "Generating..." : "AI Generate"}
+                  </Button>
+                </div>
+              </div>
+              {isGeneratingProposal && (
+                <div className="flex items-center justify-center gap-2 p-8 rounded-lg border border-border bg-bg-elevated">
+                  <Loader2 className="h-5 w-5 animate-spin text-accent" />
+                  <p className="text-sm text-text-muted">Generating proposal content...</p>
+                </div>
+              )}
+              {generatedProposalContent && !isGeneratingProposal && (
+                <div className="p-4 rounded-lg border border-border bg-bg-elevated max-h-64 overflow-y-auto">
+                  <div className="prose prose-sm text-text-primary whitespace-pre-wrap">
+                    {generatedProposalContent}
+                  </div>
+                </div>
+              )}
+              {!generatedProposalContent && !isGeneratingProposal && (
+                <div className="flex flex-col items-center justify-center gap-2 p-8 rounded-lg border border-dashed border-border bg-bg-elevated">
+                  <Sparkles className="h-6 w-6 text-text-muted" />
+                  <p className="text-sm text-text-muted">
+                    Click &quot;AI Generate&quot; to create proposal content
+                  </p>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="p-3 rounded-lg bg-bg-elevated">
                 <p className="text-xs text-text-muted">Created</p>
@@ -462,9 +570,9 @@ export default function ProposalGeneratorPage() {
                 </Badge>
               </div>
             </div>
-            
+
             <ModalFooter>
-              <Button variant="secondary" onClick={() => setShowViewModal(false)}>
+              <Button variant="secondary" onClick={() => { setShowViewModal(false); setGeneratedProposalContent(""); }}>
                 Close
               </Button>
               <Button variant="ghost">
@@ -531,11 +639,69 @@ export default function ProposalGeneratorPage() {
               </div>
             </div>
             
+            {/* AI-Generated Content in Edit Panel */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-text-primary">
+                  AI-Generated Content
+                </label>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={isGeneratingProposal}
+                  onClick={() =>
+                    handleGenerateProposal(
+                      selectedProposal.client,
+                      selectedProposal.sections
+                    )
+                  }
+                >
+                  {isGeneratingProposal ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 mr-1" />
+                  )}
+                  {isGeneratingProposal ? "Generating..." : "AI Generate"}
+                </Button>
+              </div>
+              {isGeneratingProposal && (
+                <div className="flex items-center justify-center gap-2 p-8 rounded-lg border border-border bg-bg-elevated">
+                  <Loader2 className="h-5 w-5 animate-spin text-accent" />
+                  <p className="text-sm text-text-muted">Generating proposal content...</p>
+                </div>
+              )}
+              {generatedProposalContent && !isGeneratingProposal && (
+                <div className="relative">
+                  <div className="p-4 rounded-lg border border-border bg-bg-elevated max-h-64 overflow-y-auto">
+                    <div className="prose prose-sm text-text-primary whitespace-pre-wrap">
+                      {generatedProposalContent}
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute top-2 right-2"
+                    onClick={() => navigator.clipboard.writeText(generatedProposalContent)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              {!generatedProposalContent && !isGeneratingProposal && (
+                <div className="flex flex-col items-center justify-center gap-2 p-6 rounded-lg border border-dashed border-border bg-bg-elevated">
+                  <Sparkles className="h-5 w-5 text-text-muted" />
+                  <p className="text-xs text-text-muted">
+                    Click &quot;AI Generate&quot; to create proposal content
+                  </p>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center gap-2 pt-4">
-              <Button variant="secondary" onClick={() => setShowEditPanel(false)}>
+              <Button variant="secondary" onClick={() => { setShowEditPanel(false); setGeneratedProposalContent(""); }}>
                 Cancel
               </Button>
-              <Button variant="accent" onClick={() => setShowEditPanel(false)}>
+              <Button variant="accent" onClick={() => { setShowEditPanel(false); setGeneratedProposalContent(""); }}>
                 <Save className="h-4 w-4 mr-2" />
                 Save Changes
               </Button>

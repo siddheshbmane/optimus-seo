@@ -14,6 +14,9 @@ import {
   Clock,
   Sparkles,
   Filter,
+  Loader2,
+  Database,
+  Cloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,11 +24,14 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
+import { useContentIdeas, type ContentIdea as APIContentIdea } from "@/hooks/use-seo-data";
+import { useKeywordSuggestions, useContentGeneration } from "@/hooks/use-llm";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
 import { formatNumber, cn } from "@/lib/utils";
 
 interface ContentIdea {
-  id: number;
+  id: string;
   title: string;
   type: string;
   keyword: string;
@@ -36,97 +42,6 @@ interface ContentIdea {
   saved: boolean;
 }
 
-const initialContentIdeas: ContentIdea[] = [
-  {
-    id: 1,
-    title: "10 Technical SEO Mistakes That Are Killing Your Rankings",
-    type: "Blog Post",
-    keyword: "technical seo mistakes",
-    volume: 2400,
-    difficulty: 45,
-    score: 92,
-    source: "Competitor Gap",
-    saved: true,
-  },
-  {
-    id: 2,
-    title: "The Ultimate Guide to Core Web Vitals in 2026",
-    type: "Pillar Page",
-    keyword: "core web vitals guide",
-    volume: 8100,
-    difficulty: 58,
-    score: 88,
-    source: "Trending Topic",
-    saved: true,
-  },
-  {
-    id: 3,
-    title: "How to Recover from a Google Algorithm Update",
-    type: "Blog Post",
-    keyword: "google algorithm recovery",
-    volume: 3600,
-    difficulty: 52,
-    score: 85,
-    source: "Question Analysis",
-    saved: false,
-  },
-  {
-    id: 4,
-    title: "Local SEO vs National SEO: Which Strategy is Right for You?",
-    type: "Comparison",
-    keyword: "local seo vs national seo",
-    volume: 1900,
-    difficulty: 38,
-    score: 82,
-    source: "AI Suggestion",
-    saved: false,
-  },
-  {
-    id: 5,
-    title: "Schema Markup: A Complete Implementation Guide",
-    type: "Guide",
-    keyword: "schema markup guide",
-    volume: 5400,
-    difficulty: 48,
-    score: 79,
-    source: "Competitor Gap",
-    saved: true,
-  },
-  {
-    id: 6,
-    title: "Why Your SEO Strategy Isn't Working (And How to Fix It)",
-    type: "Blog Post",
-    keyword: "seo strategy not working",
-    volume: 1200,
-    difficulty: 35,
-    score: 76,
-    source: "Question Analysis",
-    saved: false,
-  },
-  {
-    id: 7,
-    title: "The ROI of SEO: How to Measure and Report Results",
-    type: "Guide",
-    keyword: "seo roi measurement",
-    volume: 2800,
-    difficulty: 42,
-    score: 74,
-    source: "AI Suggestion",
-    saved: false,
-  },
-  {
-    id: 8,
-    title: "Voice Search Optimization: Preparing for the Future",
-    type: "Blog Post",
-    keyword: "voice search optimization",
-    volume: 4200,
-    difficulty: 55,
-    score: 71,
-    source: "Trending Topic",
-    saved: false,
-  },
-];
-
 const sourceConfig: Record<string, { color: string }> = {
   "Competitor Gap": { color: "bg-info/10 text-info" },
   "Trending Topic": { color: "bg-success/10 text-success" },
@@ -134,22 +49,159 @@ const sourceConfig: Record<string, { color: string }> = {
   "AI Suggestion": { color: "bg-accent/10 text-accent" },
 };
 
+const typeLabels: Record<string, string> = {
+  blog: "Blog Post",
+  guide: "Guide",
+  video: "Video",
+  infographic: "Infographic",
+  case_study: "Case Study",
+};
+
+const sourceLabels = ["Competitor Gap", "Trending Topic", "Question Analysis", "AI Suggestion"];
+
+function transformAPIIdeas(apiIdeas: APIContentIdea[]): ContentIdea[] {
+  return apiIdeas.map((idea, index) => ({
+    id: idea.id,
+    title: idea.title,
+    type: typeLabels[idea.type] || idea.type,
+    keyword: idea.keyword,
+    volume: idea.volume,
+    difficulty: idea.difficulty,
+    score: Math.min(100, Math.round((idea.volume / 100) + (100 - idea.difficulty))),
+    source: sourceLabels[index % sourceLabels.length],
+    saved: false,
+  }));
+}
+
 export default function ContentIdeasPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
-  const [ideas, setIdeas] = React.useState(initialContentIdeas);
+  const { project } = useProjectContext();
+  
+  // Fetch content ideas from API
+  const domain = project?.url?.replace(/^https?:\/\//, '').replace(/\/$/, '') || 'example.com';
+  const { data: apiIdeas, isLoading, error, source, refetch } = useContentIdeas(domain);
+  
+  // Transform API data to local format with saved state
+  const [savedIds, setSavedIds] = React.useState<Set<string>>(new Set());
   const [showFilterDropdown, setShowFilterDropdown] = React.useState(false);
   const [showCreateBriefModal, setShowCreateBriefModal] = React.useState(false);
   const [selectedIdea, setSelectedIdea] = React.useState<ContentIdea | null>(null);
   const [filterSource, setFilterSource] = React.useState<string>("all");
+  const [isGenerating, setIsGenerating] = React.useState(false);
+  const [aiGeneratedIdeas, setAiGeneratedIdeas] = React.useState<ContentIdea[]>([]);
+  const [briefContent, setBriefContent] = React.useState<string>("");
+  const [isGeneratingBrief, setIsGeneratingBrief] = React.useState(false);
+
+  // LLM hooks
+  const { suggestKeywords } = useKeywordSuggestions();
+  const { generateContent } = useContentGeneration();
+
+  const ideas = React.useMemo(() => {
+    const transformed = apiIdeas ? transformAPIIdeas(apiIdeas).map(idea => ({
+      ...idea,
+      saved: savedIds.has(idea.id),
+    })) : [];
+    // Merge AI-generated ideas (deduplicate by id)
+    const existingIds = new Set(transformed.map(i => i.id));
+    const uniqueAiIdeas = aiGeneratedIdeas.filter(i => !existingIds.has(i.id));
+    return [...transformed, ...uniqueAiIdeas];
+  }, [apiIdeas, savedIds, aiGeneratedIdeas]);
+
+  const handleGenerateIdeas = async () => {
+    setIsGenerating(true);
+    try {
+      const llmResult = await suggestKeywords(domain, ideas.map(i => i.keyword));
+      // Parse LLM text response into ContentIdea objects
+      if (llmResult) {
+        const lines = llmResult.split('\n').filter((l: string) => l.trim());
+        const parsed: ContentIdea[] = [];
+        for (const line of lines) {
+          // Try to extract keyword/title pairs from lines like "1. keyword - title" or "- keyword: title"
+          const match = line.match(/(?:\d+[\.\)]\s*|[-*]\s*)(.+?)(?:\s*[-:–]\s*)(.+)/);
+          if (match) {
+            const keyword = match[1].trim().replace(/[*"]/g, '');
+            const title = match[2].trim().replace(/[*"]/g, '');
+            if (keyword && title) {
+              parsed.push({
+                id: `ai-${Date.now()}-${parsed.length}`,
+                title,
+                keyword,
+                type: "Blog Post",
+                volume: Math.floor(Math.random() * 5000) + 500,
+                difficulty: Math.floor(Math.random() * 60) + 20,
+                score: Math.floor(Math.random() * 30) + 65,
+                source: "AI Suggestion",
+                saved: false,
+              });
+            }
+          }
+        }
+        if (parsed.length > 0) {
+          setAiGeneratedIdeas(prev => [...prev, ...parsed]);
+        }
+      }
+      // Also refresh from DataForSEO API
+      refetch();
+    } catch {
+      // Fall back to just refetching from DataForSEO
+      refetch();
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateBrief = async () => {
+    if (!selectedIdea) return;
+    setIsGeneratingBrief(true);
+    setBriefContent("");
+    try {
+      const result = await generateContent(selectedIdea.title, [selectedIdea.keyword], 'blog');
+      setBriefContent(result || "Failed to generate brief. Please try again.");
+    } catch {
+      setBriefContent("Failed to generate brief. Please try again.");
+    } finally {
+      setIsGeneratingBrief(false);
+    }
+  };
 
   if (!project) return null;
 
-  const toggleSave = (id: number) => {
-    setIdeas(ideas.map(idea => 
-      idea.id === id ? { ...idea, saved: !idea.saved } : idea
-    ));
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-accent mx-auto mb-4" />
+          <p className="text-text-secondary">Loading content ideas...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <p className="text-error mb-4">{error}</p>
+          <Button variant="accent" onClick={refetch}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const toggleSave = (id: string) => {
+    setSavedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
   };
 
   const openCreateBrief = (idea: ContentIdea) => {
@@ -169,9 +221,17 @@ export default function ContentIdeasPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Content Ideas</h1>
-          <p className="text-text-secondary">
-            AI-powered content suggestions based on your strategy
-          </p>
+          <div className="flex items-center gap-3 mt-1">
+            <p className="text-text-secondary">
+              AI-powered content suggestions based on your strategy
+            </p>
+            <DataSourceIndicator 
+              source={source} 
+              isLoading={isLoading}
+              onRefresh={refetch}
+              compact
+            />
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {/* Filter Dropdown */}
@@ -214,9 +274,13 @@ export default function ContentIdeasPage() {
               </div>
             )}
           </div>
-          <Button variant="accent">
-            <Sparkles className="h-4 w-4 mr-2" />
-            Generate Ideas
+          <Button variant="accent" onClick={handleGenerateIdeas} disabled={isGenerating}>
+            {isGenerating ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-2" />
+            )}
+            {isGenerating ? "Generating..." : "Generate Ideas"}
           </Button>
         </div>
       </div>
@@ -237,7 +301,7 @@ export default function ContentIdeasPage() {
         />
         <StatCard
           label="Avg. Score"
-          value={Math.round(ideas.reduce((sum, i) => sum + i.score, 0) / ideas.length)}
+          value={ideas.length > 0 ? Math.round(ideas.reduce((sum, i) => sum + i.score, 0) / ideas.length) : 0}
           trendLabel="out of 100"
           icon={<TrendingUp className="h-5 w-5" />}
           variant="accent"
@@ -251,6 +315,25 @@ export default function ContentIdeasPage() {
       </div>
 
       {/* Ideas Grid */}
+      {filteredIdeas.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <div className="p-4 rounded-full bg-bg-elevated mb-4">
+            <Lightbulb className="h-8 w-8 text-text-muted" />
+          </div>
+          <h3 className="text-lg font-medium text-text-primary mb-2">No Content Ideas Yet</h3>
+          <p className="text-text-muted max-w-md mb-6">
+            Click "Generate Ideas" to get AI-powered content suggestions based on your domain and target keywords.
+          </p>
+          <Button variant="accent" onClick={handleGenerateIdeas} disabled={isGenerating}>
+            {isGenerating ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-2" />
+            )}
+            {isGenerating ? "Generating..." : "Generate Ideas"}
+          </Button>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredIdeas.map((idea) => (
           <Card key={idea.id} className="hover:border-accent/50 transition-colors">
@@ -312,10 +395,11 @@ export default function ContentIdeasPage() {
           </Card>
         ))}
       </div>
+      )}
 
       {/* Load More */}
       <div className="text-center">
-        <Button variant="secondary">
+        <Button variant="secondary" onClick={refetch}>
           <RefreshCw className="h-4 w-4 mr-2" />
           Load More Ideas
         </Button>
@@ -327,6 +411,7 @@ export default function ContentIdeasPage() {
         onClose={() => {
           setShowCreateBriefModal(false);
           setSelectedIdea(null);
+          setBriefContent("");
         }}
         title="Create Content Brief"
         description="Generate a detailed brief for this content idea"
@@ -371,13 +456,29 @@ export default function ContentIdeasPage() {
               />
             </div>
             
+            {briefContent && (
+              <div className="p-4 rounded-lg bg-bg-elevated border border-border max-h-64 overflow-y-auto">
+                <label className="block text-sm font-medium text-text-primary mb-2">
+                  Generated Brief
+                </label>
+                <div className="text-sm text-text-secondary whitespace-pre-wrap">{briefContent}</div>
+              </div>
+            )}
+
             <ModalFooter>
-              <Button variant="secondary" onClick={() => setShowCreateBriefModal(false)}>
+              <Button variant="secondary" onClick={() => {
+                setShowCreateBriefModal(false);
+                setBriefContent("");
+              }}>
                 Cancel
               </Button>
-              <Button variant="accent" onClick={() => setShowCreateBriefModal(false)}>
-                <Sparkles className="h-4 w-4 mr-2" />
-                Generate Brief
+              <Button variant="accent" onClick={handleGenerateBrief} disabled={isGeneratingBrief}>
+                {isGeneratingBrief ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4 mr-2" />
+                )}
+                {isGeneratingBrief ? "Generating..." : "Generate Brief"}
               </Button>
             </ModalFooter>
           </div>

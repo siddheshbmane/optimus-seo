@@ -11,13 +11,15 @@ import {
   Filter,
   Download,
   Sparkles,
-  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
+import { useProjectConfig } from "@/contexts/project-config-context";
+import { useCompetitorData } from "@/hooks/use-seo-data";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
 import { formatNumber, getDifficultyColor, cn } from "@/lib/utils";
 
 const keywordGaps = [
@@ -50,8 +52,14 @@ const backlinkGaps = [
 export default function CompetitorGapsPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
+  const { addKeyword } = useProjectConfig();
   const [activeTab, setActiveTab] = React.useState<"keywords" | "content" | "backlinks">("keywords");
+
+  // Fetch competitor data from API (with mock fallback)
+  const { isLoading: competitorLoading, source: competitorSource, refetch: refetchCompetitor } = useCompetitorData(
+    project?.url || ''
+  );
 
   if (!project) return null;
 
@@ -60,7 +68,10 @@ export default function CompetitorGapsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Competitor Gaps</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-text-primary">Competitor Gaps</h1>
+            <DataSourceIndicator source={competitorSource} isLoading={competitorLoading} onRefresh={refetchCompetitor} compact />
+          </div>
           <p className="text-text-secondary">
             Find opportunities your competitors are ranking for
           </p>
@@ -164,8 +175,8 @@ export default function CompetitorGapsPage() {
                         </Badge>
                       </td>
                       <td className="p-4 text-center">
-                        <Button variant="ghost" size="sm">
-                          <ArrowRight className="h-4 w-4" />
+                        <Button variant="ghost" size="sm" onClick={() => addKeyword(gap.keyword)}>
+                          Add to Strategy
                         </Button>
                       </td>
                     </tr>

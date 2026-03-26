@@ -1,6 +1,7 @@
 // Server-Sent Events (SSE) API Route
 // Provides real-time updates to connected clients
 
+import { requireAuth } from '@/lib/api/auth';
 import { realtimeEmitter, CHANNELS, type ChannelType } from '@/lib/realtime/event-emitter';
 
 export const dynamic = 'force-dynamic';
@@ -95,6 +96,7 @@ export async function GET(request: Request) {
 // POST endpoint to emit events (for internal use)
 export async function POST(request: Request) {
   try {
+    await requireAuth();
     const { channel, data } = await request.json();
     
     if (!channel || !data) {
@@ -111,6 +113,7 @@ export async function POST(request: Request) {
       subscribers: realtimeEmitter.getSubscriberCount(channel) 
     });
   } catch (error) {
+    if (error instanceof Response) return error;
     return Response.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

@@ -40,7 +40,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { SlidePanel } from "@/components/ui/slide-panel";
-import { getProjectById } from "@/data/mock-projects";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
+import { useProjectContext } from "@/contexts/project-context";
+import { useRankingsData } from "@/hooks/use-seo-data";
 import { formatNumber, cn } from "@/lib/utils";
 import {
   AreaChart,
@@ -258,7 +260,7 @@ const tabs = [
 export default function MultiSearchPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
 
   const [activeTab, setActiveTab] = React.useState("overview");
   const [selectedEngine, setSelectedEngine] = React.useState<string>("all");
@@ -267,6 +269,19 @@ export default function MultiSearchPage() {
   const [showKeywordDetail, setShowKeywordDetail] = React.useState<KeywordRanking | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [sortBy, setSortBy] = React.useState<string>("volume");
+  const [isSyncing, setIsSyncing] = React.useState(false);
+
+  // Data hooks
+  const { isLoading: rankingsLoading, source: rankingsSource, refetch: refetchRankings } = useRankingsData(
+    project?.url || '',
+    project?.locationCode || 2840
+  );
+
+  const handleSyncRankings = React.useCallback(async () => {
+    setIsSyncing(true);
+    await refetchRankings();
+    setIsSyncing(false);
+  }, [refetchRankings]);
 
   if (!project) return null;
 
@@ -312,9 +327,15 @@ export default function MultiSearchPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-text-primary">Multi-Search Engine Tracking</h1>
             <Badge variant="info">6 Engines</Badge>
+            <DataSourceIndicator
+              source={rankingsSource}
+              isLoading={rankingsLoading}
+              onRefresh={refetchRankings}
+              compact
+            />
           </div>
           <p className="text-text-secondary">
             Track rankings across Google, Bing, DuckDuckGo, Yahoo, Yandex, and Baidu
@@ -325,9 +346,9 @@ export default function MultiSearchPage() {
             <Settings className="h-4 w-4 mr-2" />
             Configure
           </Button>
-          <Button variant="accent">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Sync Rankings
+          <Button variant="accent" onClick={handleSyncRankings} disabled={isSyncing}>
+            <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
+            {isSyncing ? "Syncing..." : "Sync Rankings"}
           </Button>
         </div>
       </div>

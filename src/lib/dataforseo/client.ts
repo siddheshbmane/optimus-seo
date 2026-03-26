@@ -224,7 +224,7 @@ class DataForSEOClient {
 
   async keywordIdeas(keyword: string, locationCode = 2840, languageCode = 'en', limit = 100) {
     const data = [{
-      keyword,
+      keywords: [keyword],
       location_code: locationCode,
       language_code: languageCode,
       limit,
@@ -234,7 +234,7 @@ class DataForSEOClient {
 
   async relatedKeywords(keyword: string, locationCode = 2840, languageCode = 'en', limit = 100) {
     const data = [{
-      keyword,
+      keywords: [keyword],
       location_code: locationCode,
       language_code: languageCode,
       limit,

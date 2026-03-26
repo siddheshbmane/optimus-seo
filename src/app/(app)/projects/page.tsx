@@ -21,6 +21,9 @@ import {
   X,
   Loader2,
   RefreshCw,
+  Edit2,
+  Archive,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,7 +31,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { mockProjects, type Project as MockProject } from "@/data/mock-projects";
 import { useProjects, type Project as DBProject } from "@/hooks/use-projects";
+import { NewProjectModal } from "@/components/projects/new-project-modal";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
 import { formatNumber, getHealthScoreColor, cn } from "@/lib/utils";
+import { useDemoMode } from "@/contexts/demo-mode-context";
 
 type ViewMode = "grid" | "list";
 type StatusFilter = "all" | "active" | "paused" | "completed" | "created";
@@ -96,21 +102,26 @@ export default function ProjectsPage() {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
   const [showFilters, setShowFilters] = React.useState(false);
+  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = React.useState(false);
+  
+  // Demo mode toggle
+  const { isDemoMode } = useDemoMode();
 
   // Fetch real projects from API
   const { projects: dbProjects, isLoading, error, refetch } = useProjects();
 
-  // Combine real projects with mock projects for demo
+  // Determine data source for indicator
+  const dataSource: 'api' | 'mock' | null = isLoading ? null : isDemoMode ? 'mock' : 'api';
+
+  // Show mock projects only in demo mode, otherwise show real projects
   const allProjects: DisplayProject[] = React.useMemo(() => {
-    const realProjects = dbProjects.map(toDisplayProject);
-    // If we have real projects, show them first, then mock projects
-    // In production, you'd only show real projects
-    if (realProjects.length > 0) {
-      return [...realProjects, ...mockProjects.map(mockToDisplayProject)];
+    if (isDemoMode) {
+      // Demo mode: show mock projects
+      return mockProjects.map(mockToDisplayProject);
     }
-    // Fallback to mock projects if no real projects
-    return mockProjects.map(mockToDisplayProject);
-  }, [dbProjects]);
+    // Normal mode: show real projects from database
+    return dbProjects.map(toDisplayProject);
+  }, [dbProjects, isDemoMode]);
 
   const filteredProjects = allProjects.filter((project) => {
     const matchesSearch =
@@ -155,9 +166,6 @@ export default function ProjectsPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-text-primary">Projects</h1>
           <p className="text-sm sm:text-base text-text-secondary">
             Manage and monitor all your SEO projects
-            {dbProjects.length > 0 && (
-              <span className="ml-2 text-accent">({dbProjects.length} from database)</span>
-            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -171,12 +179,33 @@ export default function ProjectsPage() {
             <RefreshCw className={cn("h-4 w-4 mr-2", isLoading && "animate-spin")} />
             Refresh
           </Button>
-          <Button variant="accent" className="w-full sm:w-auto">
+          <Button 
+            variant="accent" 
+            className="w-full sm:w-auto"
+            onClick={() => setIsNewProjectModalOpen(true)}
+          >
             <Plus className="h-4 w-4 mr-2" />
             New Project
           </Button>
         </div>
       </div>
+
+      {/* New Project Modal */}
+      <NewProjectModal
+        isOpen={isNewProjectModalOpen}
+        onClose={() => setIsNewProjectModalOpen(false)}
+        onSuccess={refetch}
+      />
+
+      {/* Data Source Indicator */}
+      <DataSourceIndicator
+        source={dataSource}
+        isLoading={isLoading}
+        error={error}
+        onRefresh={refetch}
+        showRefreshButton={false}
+        compact
+      />
 
       {/* Error State */}
       {error && (
@@ -288,113 +317,144 @@ export default function ProjectsPage() {
         )}
       </div>
 
-      {/* Projects Grid/List */}
-      {/* Mobile always shows cards, desktop respects viewMode */}
-      <div className={cn(
-        "grid gap-3 sm:gap-4",
-        viewMode === "grid" || true // Always grid on mobile
-          ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-          : "grid-cols-1"
-      )}>
-        {filteredProjects.map((project) => (
-          <ProjectCard key={project.id} project={project} viewMode={viewMode} />
-        ))}
-      </div>
-
-      {/* Desktop List View */}
-      {viewMode === "list" && (
-        <div className="hidden md:block space-y-2">
-          {/* List Header */}
-          <div className="grid grid-cols-12 gap-4 px-4 py-2 text-xs font-medium text-text-muted uppercase tracking-wider">
-            <div className="col-span-4">Project</div>
-            <div className="col-span-2 text-center">Health</div>
-            <div className="col-span-2 text-center">Keywords</div>
-            <div className="col-span-2 text-center">Traffic</div>
-            <div className="col-span-1 text-center">Status</div>
-            <div className="col-span-1"></div>
-          </div>
-          {filteredProjects.map((project) => (
-            <Link
-              key={project.id}
-              href={`/projects/${project.id}/sales`}
-              className="grid grid-cols-12 gap-4 items-center px-4 py-3 bg-bg-card border border-border rounded-lg hover:border-accent/50 transition-colors"
-            >
-              <div className="col-span-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
-                  <span className="text-accent font-semibold text-sm">
-                    {project.name.charAt(0)}
-                  </span>
+      {/* Loading State */}
+      {isLoading && !isDemoMode && (
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Card key={i} className="h-full">
+              <CardContent className="p-3 sm:p-4">
+                <div className="animate-pulse space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-bg-elevated" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 bg-bg-elevated rounded w-3/4" />
+                      <div className="h-3 bg-bg-elevated rounded w-1/2" />
+                    </div>
+                  </div>
+                  <div className="h-2 bg-bg-elevated rounded w-full" />
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="h-16 bg-bg-elevated rounded" />
+                    <div className="h-16 bg-bg-elevated rounded" />
+                    <div className="h-16 bg-bg-elevated rounded" />
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="font-medium text-text-primary truncate">
-                    {project.name}
-                  </p>
-                  <p className="text-sm text-text-muted truncate">
-                    {project.url}
-                  </p>
-                </div>
-              </div>
-              <div className="col-span-2 text-center">
-                <span
-                  className={cn(
-                    "font-mono font-semibold",
-                    getHealthScoreColor(project.healthScore)
-                  )}
-                >
-                  {project.healthScore}
-                </span>
-                <span className="text-text-muted">/100</span>
-              </div>
-              <div className="col-span-2 text-center font-mono text-text-primary">
-                {formatNumber(project.keywords)}
-              </div>
-              <div className="col-span-2 text-center">
-                <div className="flex items-center justify-center gap-1">
-                  <span className="font-mono text-text-primary">
-                    {formatNumber(project.traffic)}
-                  </span>
-                  {project.trafficTrend !== 0 && (
-                    <span
-                      className={cn(
-                        "flex items-center text-xs",
-                        project.trafficTrend > 0 ? "text-success" : "text-error"
-                      )}
-                    >
-                      {project.trafficTrend > 0 ? (
-                        <TrendingUp className="h-3 w-3" />
-                      ) : (
-                        <TrendingDown className="h-3 w-3" />
-                      )}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="col-span-1 flex justify-center">
-                <Badge variant={getStatusBadgeVariant(project.status)}>
-                  <span className="flex items-center gap-1">
-                    {getStatusIcon(project.status)}
-                    <span className="capitalize">{project.status}</span>
-                  </span>
-                </Badge>
-              </div>
-              <div className="col-span-1 flex justify-end">
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  className="p-1 rounded hover:bg-bg-elevated text-text-muted hover:text-text-primary"
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </button>
-              </div>
-            </Link>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
 
-      {/* Empty State */}
-      {filteredProjects.length === 0 && (
+      {/* Projects Grid/List */}
+      {!isLoading && viewMode === "grid" && (
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredProjects.map((project) => (
+            <ProjectCard key={project.id} project={project} viewMode={viewMode} />
+          ))}
+        </div>
+      )}
+      {!isLoading && viewMode === "list" && (
+        <>
+          {/* Mobile: always show cards */}
+          <div className="grid gap-3 grid-cols-1 md:hidden">
+            {filteredProjects.map((project) => (
+              <ProjectCard key={project.id} project={project} viewMode={viewMode} />
+            ))}
+          </div>
+
+          {/* Desktop: List View */}
+          <div className="hidden md:block space-y-2">
+            {/* List Header */}
+            <div className="grid grid-cols-12 gap-4 px-4 py-2 text-xs font-medium text-text-muted uppercase tracking-wider">
+              <div className="col-span-4">Project</div>
+              <div className="col-span-2 text-center">Health</div>
+              <div className="col-span-2 text-center">Keywords</div>
+              <div className="col-span-2 text-center">Traffic</div>
+              <div className="col-span-1 text-center">Status</div>
+              <div className="col-span-1"></div>
+            </div>
+            {filteredProjects.map((project) => (
+              <Link
+                key={project.id}
+                href={`/projects/${project.id}/sales`}
+                className="grid grid-cols-12 gap-4 items-center px-4 py-3 bg-bg-card border border-border rounded-lg hover:border-accent/50 transition-colors"
+              >
+                <div className="col-span-4 flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-accent font-semibold text-sm">
+                      {project.name.charAt(0)}
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-text-primary truncate">
+                      {project.name}
+                    </p>
+                    <p className="text-sm text-text-muted truncate">
+                      {project.url}
+                    </p>
+                  </div>
+                </div>
+                <div className="col-span-2 text-center">
+                  <span
+                    className={cn(
+                      "font-mono font-semibold",
+                      getHealthScoreColor(project.healthScore)
+                    )}
+                  >
+                    {project.healthScore}
+                  </span>
+                  <span className="text-text-muted">/100</span>
+                </div>
+                <div className="col-span-2 text-center font-mono text-text-primary">
+                  {formatNumber(project.keywords)}
+                </div>
+                <div className="col-span-2 text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <span className="font-mono text-text-primary">
+                      {formatNumber(project.traffic)}
+                    </span>
+                    {project.trafficTrend !== 0 && (
+                      <span
+                        className={cn(
+                          "flex items-center text-xs",
+                          project.trafficTrend > 0 ? "text-success" : "text-error"
+                        )}
+                      >
+                        {project.trafficTrend > 0 ? (
+                          <TrendingUp className="h-3 w-3" />
+                        ) : (
+                          <TrendingDown className="h-3 w-3" />
+                        )}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="col-span-1 flex justify-center">
+                  <Badge variant={getStatusBadgeVariant(project.status)}>
+                    <span className="flex items-center gap-1">
+                      {getStatusIcon(project.status)}
+                      <span className="capitalize">{project.status}</span>
+                    </span>
+                  </Badge>
+                </div>
+                <div className="col-span-1 flex justify-end">
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    className="p-1 rounded hover:bg-bg-elevated text-text-muted hover:text-text-primary"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Empty State - only show when not loading */}
+      {!isLoading && filteredProjects.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 sm:py-16 text-center">
           <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-full bg-bg-elevated flex items-center justify-center mb-4">
             <Globe className="h-7 w-7 sm:h-8 sm:w-8 text-text-muted" />
@@ -408,7 +468,10 @@ export default function ProjectsPage() {
               : "Get started by creating your first project"}
           </p>
           {!searchQuery && (
-            <Button variant="accent">
+            <Button 
+              variant="accent"
+              onClick={() => setIsNewProjectModalOpen(true)}
+            >
               <Plus className="h-4 w-4 mr-2" />
               Create Project
             </Button>
@@ -420,6 +483,28 @@ export default function ProjectsPage() {
 }
 
 function ProjectCard({ project, viewMode }: { project: DisplayProject; viewMode: ViewMode }) {
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  // Close menu on outside click
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [menuOpen]);
+
+  const menuItems = [
+    { label: "Edit", icon: Edit2, href: `/projects/${project.id}/settings` },
+    { label: project.status === "paused" ? "Resume" : "Pause", icon: project.status === "paused" ? PlayCircle : Pause },
+    { label: "Archive", icon: Archive },
+    { label: "Delete", icon: Trash2, destructive: true },
+  ];
+
   return (
     <Link href={`/projects/${project.id}/sales`}>
       <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full">
@@ -441,15 +526,44 @@ function ProjectCard({ project, viewMode }: { project: DisplayProject; viewMode:
                 </p>
               </div>
             </div>
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              className="p-1 rounded hover:bg-bg-elevated text-text-muted hover:text-text-primary flex-shrink-0"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
+            <div className="relative flex-shrink-0" ref={menuRef}>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setMenuOpen(!menuOpen);
+                }}
+                className="p-1 rounded hover:bg-bg-elevated text-text-muted hover:text-text-primary"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-border bg-bg-card shadow-lg z-50 py-1">
+                  {menuItems.map((item) => (
+                    <button
+                      key={item.label}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setMenuOpen(false);
+                        if (item.href) {
+                          window.location.href = item.href;
+                        }
+                      }}
+                      className={cn(
+                        "flex items-center gap-2 w-full px-3 py-2 text-sm transition-colors",
+                        item.destructive
+                          ? "text-error hover:bg-error/10"
+                          : "text-text-primary hover:bg-bg-elevated"
+                      )}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Health Score */}

@@ -2,8 +2,9 @@
 // Manages white-label configurations
 
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  mockWhitelabelConfigs, 
+import { requireAuth } from '@/lib/api/auth';
+import {
+  mockWhitelabelConfigs,
   type WhitelabelConfig,
   defaultBranding,
 } from '@/lib/whitelabel/config';
@@ -13,42 +14,49 @@ let whitelabelConfigs = [...mockWhitelabelConfigs];
 
 // GET - Get whitelabel config
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const organizationId = searchParams.get('organizationId');
-  const domain = searchParams.get('domain');
+  try {
+    await requireAuth();
+    const { searchParams } = new URL(request.url);
+    const organizationId = searchParams.get('organizationId');
+    const domain = searchParams.get('domain');
 
-  // Find by domain
-  if (domain) {
-    const config = whitelabelConfigs.find(c => c.customDomain === domain);
-    if (config) {
-      return NextResponse.json({ config });
+    // Find by domain
+    if (domain) {
+      const config = whitelabelConfigs.find(c => c.customDomain === domain);
+      if (config) {
+        return NextResponse.json({ config });
+      }
+      // Return default branding if no custom domain
+      return NextResponse.json({
+        config: null,
+        defaultBranding
+      });
     }
-    // Return default branding if no custom domain
-    return NextResponse.json({ 
-      config: null, 
-      defaultBranding 
-    });
-  }
 
-  // Find by organization
-  if (organizationId) {
-    const config = whitelabelConfigs.find(c => c.organizationId === organizationId);
-    return NextResponse.json({ 
-      config: config || null,
-      defaultBranding,
-    });
-  }
+    // Find by organization
+    if (organizationId) {
+      const config = whitelabelConfigs.find(c => c.organizationId === organizationId);
+      return NextResponse.json({
+        config: config || null,
+        defaultBranding,
+      });
+    }
 
-  // Return all configs (admin only)
-  return NextResponse.json({ 
-    configs: whitelabelConfigs,
-    total: whitelabelConfigs.length,
-  });
+    // Return all configs (admin only)
+    return NextResponse.json({
+      configs: whitelabelConfigs,
+      total: whitelabelConfigs.length,
+    });
+  } catch (error) {
+    if (error instanceof Response) return error;
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }
 
 // POST - Create whitelabel config
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth();
     const body = await request.json();
     
     const newConfig: WhitelabelConfig = {
@@ -73,6 +81,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ config: newConfig }, { status: 201 });
   } catch (error) {
+    if (error instanceof Response) return error;
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to create config' },
       { status: 400 }
@@ -83,6 +92,7 @@ export async function POST(request: NextRequest) {
 // PUT - Update whitelabel config
 export async function PUT(request: NextRequest) {
   try {
+    await requireAuth();
     const body = await request.json();
     const { id, ...updates } = body;
 
@@ -105,6 +115,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ config: updatedConfig });
   } catch (error) {
+    if (error instanceof Response) return error;
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to update config' },
       { status: 400 }
@@ -114,19 +125,25 @@ export async function PUT(request: NextRequest) {
 
 // DELETE - Delete whitelabel config
 export async function DELETE(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id');
+  try {
+    await requireAuth();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
 
-  if (!id) {
-    return NextResponse.json({ error: 'Config ID required' }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ error: 'Config ID required' }, { status: 400 });
+    }
+
+    const index = whitelabelConfigs.findIndex(c => c.id === id);
+    if (index === -1) {
+      return NextResponse.json({ error: 'Config not found' }, { status: 404 });
+    }
+
+    whitelabelConfigs.splice(index, 1);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    if (error instanceof Response) return error;
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-
-  const index = whitelabelConfigs.findIndex(c => c.id === id);
-  if (index === -1) {
-    return NextResponse.json({ error: 'Config not found' }, { status: 404 });
-  }
-
-  whitelabelConfigs.splice(index, 1);
-
-  return NextResponse.json({ success: true });
 }

@@ -37,7 +37,6 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalFooter } from "@/components/ui/modal";
-import { getProjectById } from "@/data/mock-projects";
 import { cn } from "@/lib/utils";
 import {
   mockLLMMentions,
@@ -49,6 +48,10 @@ import {
   mockAIVisibilityRecommendations,
   mockMissedMentions,
 } from "@/data/mock-llm-mentions";
+import { useAIVisibilityData } from "@/hooks/use-seo-data";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
+import { useProjectContext } from "@/contexts/project-context";
+import { exportAIVisibility, type AIVisibilityExportData } from "@/lib/export";
 import { mockLLMResponses, mockSampleQueries, simulateQuery } from "@/data/mock-llm-responses";
 import { mockAIKeywords, mockAIFirstKeywords, mockRisingAIKeywords, calculateAIOpportunityScore } from "@/data/mock-ai-keywords";
 import type { LLMPlatform, Sentiment } from "@/lib/dataforseo/types";
@@ -83,36 +86,63 @@ const sentimentConfig: Record<Sentiment, { color: string; bgColor: string; label
 export default function AIVisibilityPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
 
   const [activeTab, setActiveTab] = React.useState<TabId>("overview");
   const [selectedPlatform, setSelectedPlatform] = React.useState<LLMPlatform | "all">("all");
   const [selectedSentiment, setSelectedSentiment] = React.useState<Sentiment | "all">("all");
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [queryKeyword, setQueryKeyword] = React.useState("");
+  const [queryInput, setQueryInput] = React.useState("");
   const [simulatorQuery, setSimulatorQuery] = React.useState("");
   const [isSimulating, setIsSimulating] = React.useState(false);
   const [simulatedResponse, setSimulatedResponse] = React.useState<typeof mockLLMResponses[0] | null>(null);
+  const [liveSimulatorResult, setLiveSimulatorResult] = React.useState<Record<string, unknown> | null>(null);
   const [showFilterModal, setShowFilterModal] = React.useState(false);
   const [showExportModal, setShowExportModal] = React.useState(false);
   const [showMentionDetail, setShowMentionDetail] = React.useState<typeof mockLLMMentions[0] | null>(null);
+  const [exportFormat, setExportFormat] = React.useState<"csv" | "json" | "html">("html");
+
+  // Fetch AI visibility data from API (with mock fallback)
+  const activeKeyword = queryKeyword || project?.url || '';
+  const { data: aiData, isLoading: aiLoading, source: aiSource, refetch: refetchAI } = useAIVisibilityData(
+    activeKeyword
+  );
+
+  const handleKeywordSearch = () => {
+    const trimmed = queryInput.trim();
+    if (trimmed) {
+      setQueryKeyword(trimmed);
+    }
+  };
+
+  const handleClearKeyword = () => {
+    setQueryKeyword("");
+    setQueryInput("");
+  };
 
   if (!project) return null;
 
-  // Calculate overall metrics
-  const overallScore = Math.round(
+  // Calculate overall metrics - use API data if available, otherwise use mock data
+  const overallScore = aiData?.overallScore ?? Math.round(
     mockCrossAggregated.platforms_comparison.reduce((sum, p) => sum + p.visibility_score, 0) /
       mockCrossAggregated.platforms_comparison.length
   );
-  const totalMentions = mockAggregatedMetrics.total_mentions;
+  const totalMentions = aiData?.platforms?.reduce((sum, p) => sum + p.mentions, 0) ?? mockAggregatedMetrics.total_mentions;
   const avgPosition = (
     mockAggregatedMetrics.platforms_breakdown.reduce((sum, p) => sum + p.avg_position, 0) /
     mockAggregatedMetrics.platforms_breakdown.length
   ).toFixed(1);
-  const positiveSentiment = Math.round(
-    (mockAggregatedMetrics.platforms_breakdown.reduce((sum, p) => sum + p.sentiment.positive, 0) /
-      totalMentions) *
-      100
-  );
+  const positiveSentiment = aiData?.platforms 
+    ? Math.round((aiData.platforms.filter(p => p.sentiment === 'positive').length / aiData.platforms.length) * 100)
+    : Math.round(
+        (mockAggregatedMetrics.platforms_breakdown.reduce((sum, p) => sum + p.sentiment.positive, 0) /
+          (aiData?.platforms?.reduce((sum, p) => sum + p.mentions, 0) ?? mockAggregatedMetrics.total_mentions)) *
+          100
+      );
+  
+  // Get recommendations from API or mock
+  const recommendations = aiData?.recommendations ?? mockAIVisibilityRecommendations;
 
   // Filter mentions
   const filteredMentions = mockLLMMentions.filter((m) => {
@@ -122,12 +152,39 @@ export default function AIVisibilityPage() {
     return true;
   });
 
-  // Simulate query
+  // Simulate query - try real API first, fall back to mock
   const handleSimulate = async () => {
     if (!simulatorQuery.trim()) return;
     setIsSimulating(true);
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    setLiveSimulatorResult(null);
+
+    try {
+      const res = await fetch('/api/dataforseo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'llmResponsesLive',
+          params: {
+            query: simulatorQuery,
+            platforms: ['chatgpt', 'claude', 'gemini', 'perplexity'],
+          },
+        }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json && !json.error) {
+          setLiveSimulatorResult(json);
+          setSimulatedResponse(null);
+          setIsSimulating(false);
+          return;
+        }
+      }
+    } catch {
+      // API call failed, fall back to mock
+    }
+
+    // Fallback to mock simulation
     const response = simulateQuery(simulatorQuery);
     setSimulatedResponse(response);
     setIsSimulating(false);
@@ -138,25 +195,71 @@ export default function AIVisibilityPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-text-primary">AI Search Command Center</h1>
             <Badge variant="accent">New</Badge>
+            <DataSourceIndicator source={aiSource} isLoading={aiLoading} onRefresh={refetchAI} compact />
           </div>
           <p className="text-text-secondary">
             Track your brand visibility across ChatGPT, Claude, Gemini, and Perplexity
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => setShowExportModal(true)}>
+          <Button variant="secondary" size="sm" onClick={() => setShowExportModal(true)}>
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
-          <Button variant="accent">
+          <Button variant="accent" size="sm" onClick={refetchAI}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh Data
           </Button>
         </div>
       </div>
+
+      {/* Keyword Search Bar */}
+      <Card>
+        <CardContent className="py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 flex gap-2">
+              <Input
+                placeholder="Search AI mentions for keyword..."
+                value={queryInput}
+                onChange={(e) => setQueryInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleKeywordSearch()}
+                className="flex-1"
+              />
+              <Button variant="accent" size="sm" onClick={handleKeywordSearch} disabled={!queryInput.trim() || aiLoading}>
+                {aiLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Search className="h-4 w-4 mr-2" />
+                    Analyze
+                  </>
+                )}
+              </Button>
+            </div>
+            {queryKeyword && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-accent/10 rounded-lg">
+                <span className="text-sm text-text-secondary">Analyzing:</span>
+                <span className="text-sm font-medium text-accent">{queryKeyword}</span>
+                <button onClick={handleClearKeyword} className="text-text-muted hover:text-text-primary">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+            {!queryKeyword && project?.url && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-bg-elevated rounded-lg">
+                <span className="text-xs text-text-muted">Default:</span>
+                <span className="text-xs font-mono text-text-secondary">{project.url}</span>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Tabs */}
       <div className="flex items-center gap-1 p-1 bg-bg-elevated rounded-lg overflow-x-auto">
@@ -209,6 +312,7 @@ export default function AIVisibilityPage() {
           setSimulatorQuery={setSimulatorQuery}
           isSimulating={isSimulating}
           simulatedResponse={simulatedResponse}
+          liveResult={liveSimulatorResult}
           onSimulate={handleSimulate}
         />
       )}
@@ -292,28 +396,55 @@ export default function AIVisibilityPage() {
         title="Export AI Visibility Data"
       >
         <div className="space-y-4">
-          <p className="text-text-secondary">Choose what data to export:</p>
-          <div className="space-y-2">
-            {["All Mentions", "Platform Comparison", "Competitor Analysis", "Recommendations", "Full Report"].map((option) => (
-              <label key={option} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-bg-elevated cursor-pointer">
-                <input type="checkbox" className="rounded" defaultChecked />
-                <span className="text-text-primary">{option}</span>
-              </label>
-            ))}
-          </div>
           <div>
-            <label className="text-sm text-text-muted">Format</label>
-            <div className="flex gap-2 mt-2">
-              <Button variant="secondary" className="flex-1">CSV</Button>
-              <Button variant="secondary" className="flex-1">JSON</Button>
-              <Button variant="accent" className="flex-1">PDF Report</Button>
+            <label className="block text-sm font-medium text-text-primary mb-3">Export Format</label>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { value: "html" as const, label: "HTML", desc: "Print-ready report" },
+                { value: "csv" as const, label: "CSV", desc: "Spreadsheet" },
+                { value: "json" as const, label: "JSON", desc: "Structured data" },
+              ].map((format) => (
+                <button
+                  key={format.value}
+                  onClick={() => setExportFormat(format.value)}
+                  className={cn(
+                    "p-4 rounded-lg border text-left transition-colors",
+                    exportFormat === format.value 
+                      ? "border-accent bg-accent/10" 
+                      : "border-border hover:border-accent/50"
+                  )}
+                >
+                  <p className="font-medium text-text-primary">{format.label}</p>
+                  <p className="text-xs text-text-muted mt-1">{format.desc}</p>
+                </button>
+              ))}
             </div>
           </div>
           <ModalFooter>
             <Button variant="secondary" onClick={() => setShowExportModal(false)}>Cancel</Button>
-            <Button variant="accent" onClick={() => setShowExportModal(false)}>
+            <Button 
+              variant="accent" 
+              onClick={() => {
+                // Transform mentions to export format
+                const exportData: AIVisibilityExportData[] = mockLLMMentions.map(mention => ({
+                  platform: platformConfig[mention.platform]?.name || mention.platform,
+                  query: mention.query,
+                  sentiment: mention.sentiment,
+                  position: mention.position,
+                  snippet: mention.snippet,
+                  date: mention.date,
+                }));
+                
+                // Export with selected format
+                const filename = `ai-visibility-${project?.name || 'export'}-${new Date().toISOString().split('T')[0]}`;
+                exportAIVisibility(exportData, exportFormat, filename);
+                
+                // Close modal
+                setShowExportModal(false);
+              }}
+            >
               <Download className="h-4 w-4 mr-2" />
-              Export
+              Export {mockLLMMentions.length} Mentions
             </Button>
           </ModalFooter>
         </div>
@@ -649,12 +780,14 @@ function ResponsesTab({
   setSimulatorQuery,
   isSimulating,
   simulatedResponse,
+  liveResult,
   onSimulate,
 }: {
   simulatorQuery: string;
   setSimulatorQuery: (q: string) => void;
   isSimulating: boolean;
   simulatedResponse: typeof mockLLMResponses[0] | null;
+  liveResult: Record<string, unknown> | null;
   onSimulate: () => void;
 }) {
   return (
@@ -708,8 +841,77 @@ function ResponsesTab({
         </CardContent>
       </Card>
 
+      {/* Live API Responses */}
+      {liveResult && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Badge variant="success">Live API</Badge>
+            <span className="text-sm text-text-secondary">Results from DataForSEO LLM Responses API</span>
+          </div>
+          {Array.isArray((liveResult as Record<string, unknown>).tasks)
+            ? ((liveResult as Record<string, unknown>).tasks as Array<Record<string, unknown>>).map((task, ti) => {
+                const results = (task.result as Array<Record<string, unknown>>) || [];
+                return (
+                  <div key={ti} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {results.map((item, ri) => {
+                      const platform = (item.platform as string) || 'unknown';
+                      const responseText = (item.response_text as string) || (item.text as string) || JSON.stringify(item, null, 2);
+                      const citations = (item.citations as Array<Record<string, unknown>>) || (item.references as Array<Record<string, unknown>>) || [];
+                      const pKey = platform.toLowerCase().replace(/\s/g, '') as LLMPlatform;
+                      const config = platformConfig[pKey] || { color: 'text-text-primary', bgColor: 'bg-bg-elevated', icon: '🔵', name: platform };
+                      return (
+                        <Card key={ri}>
+                          <CardHeader className="pb-2">
+                            <div className="flex items-center gap-2">
+                              <span className={cn("text-xl p-1 rounded", config.bgColor)}>{config.icon}</span>
+                              <CardTitle className="text-base">{config.name}</CardTitle>
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-sm text-text-secondary whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+                              {responseText}
+                            </div>
+                            {citations.length > 0 && (
+                              <div className="mt-4 pt-4 border-t border-border">
+                                <p className="text-xs text-text-muted mb-2">Citations:</p>
+                                <div className="space-y-1">
+                                  {citations.map((cite, ci) => (
+                                    <div key={ci} className="flex items-center gap-2 text-xs p-1 rounded">
+                                      <span className="text-text-muted">#{ci + 1}</span>
+                                      <a
+                                        href={(cite.url as string) || '#'}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-accent hover:underline truncate"
+                                      >
+                                        {(cite.title as string) || (cite.url as string) || 'Source'}
+                                      </a>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                );
+              })
+            : (
+              <Card>
+                <CardContent className="py-4">
+                  <pre className="text-sm text-text-secondary whitespace-pre-wrap max-h-[400px] overflow-y-auto">
+                    {JSON.stringify(liveResult, null, 2)}
+                  </pre>
+                </CardContent>
+              </Card>
+            )}
+        </div>
+      )}
+
       {/* Simulated Responses */}
-      {simulatedResponse && (
+      {simulatedResponse && !liveResult && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {(Object.entries(simulatedResponse.responses) as [LLMPlatform, typeof simulatedResponse.responses.chatgpt][]).map(
             ([platform, response]) => {
@@ -786,7 +988,7 @@ function ResponsesTab({
       )}
 
       {/* Pre-loaded Responses */}
-      {!simulatedResponse && (
+      {!simulatedResponse && !liveResult && (
         <Card>
           <CardHeader>
             <CardTitle>Recent Query Comparisons</CardTitle>

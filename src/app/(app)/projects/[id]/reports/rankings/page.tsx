@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   Target,
   TrendingUp,
@@ -12,12 +12,18 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Minus,
+  Settings,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
+import { useProjectConfig } from "@/contexts/project-config-context";
+import { useRankingsData } from "@/hooks/use-seo-data";
+import { DataSourceIndicator, SetupRequiredBanner } from "@/components/ui/data-source-indicator";
 import { formatNumber, cn } from "@/lib/utils";
 
 const rankingData = [
@@ -46,21 +52,118 @@ const positionDistribution = [
 export default function RankingsReportPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const router = useRouter();
+  const { project } = useProjectContext();
+  const { config } = useProjectConfig();
+
+  // Get tracked keywords from project config
+  const trackedKeywords = config?.keywords || [];
+  const hasTrackedKeywords = trackedKeywords.length > 0;
+
+  // Fetch rankings data from API (with mock fallback)
+  const { data: apiRankings, isLoading: rankingsLoading, error: rankingsError, source: rankingsSource, refetch: refetchRankings } = useRankingsData(
+    project?.url || ''
+  );
 
   if (!project) return null;
 
-  const improved = rankingData.filter(k => k.change > 0).length;
-  const declined = rankingData.filter(k => k.change < 0).length;
-  const unchanged = rankingData.filter(k => k.change === 0).length;
-  const avgPosition = Math.round(rankingData.reduce((sum, k) => sum + k.position, 0) / rankingData.length);
+  // Show setup banner if no keywords are tracked
+  if (!hasTrackedKeywords && !rankingsLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Rankings Report</h1>
+          <p className="text-text-secondary">
+            Track keyword position changes over time
+          </p>
+        </div>
+        
+        <SetupRequiredBanner
+          title="No Keywords Tracked"
+          description="Add keywords to your project to start tracking their rankings. Go to Settings to add keywords you want to monitor."
+          actionLabel="Add Keywords"
+          onAction={() => router.push(`/projects/${projectId}/settings`)}
+          icon={Target}
+        />
+        
+        <Card>
+          <CardContent className="py-12">
+            <div className="text-center">
+              <Target className="h-12 w-12 text-text-muted mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-text-primary mb-2">Start Tracking Rankings</h3>
+              <p className="text-text-muted max-w-md mx-auto mb-6">
+                Add the keywords you want to track in your project settings. Once added, we'll monitor their positions in search results and show you trends over time.
+              </p>
+              <Button variant="accent" onClick={() => router.push(`/projects/${projectId}/settings`)}>
+                <Settings className="h-4 w-4 mr-2" />
+                Go to Settings
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (rankingsLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-accent mx-auto mb-4" />
+          <p className="text-text-secondary">Loading rankings data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Use API data if available, otherwise use mock data
+  const rankingsDataToUse = React.useMemo(() => {
+    if (apiRankings && apiRankings.length > 0) {
+      return apiRankings.map(r => ({
+        keyword: r.keyword,
+        position: r.position,
+        previousPosition: r.previousPosition,
+        volume: r.searchVolume,
+        change: r.change,
+      }));
+    }
+    return rankingData;
+  }, [apiRankings]);
+
+  const handleExport = () => {
+    const data = rankingsDataToUse.map((kw) => ({
+      keyword: kw.keyword,
+      position: kw.position,
+      previous_position: kw.previousPosition,
+      change: kw.change,
+      search_volume: kw.volume,
+    }));
+    if (data.length === 0) return;
+    const headers = Object.keys(data[0]).join(",");
+    const csv = data.map((row) => Object.values(row).join(",")).join("\n");
+    const blob = new Blob([headers + "\n" + csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `rankings-report-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const improved = rankingsDataToUse.filter(k => k.change > 0).length;
+  const declined = rankingsDataToUse.filter(k => k.change < 0).length;
+  const unchanged = rankingsDataToUse.filter(k => k.change === 0).length;
+  const avgPosition = Math.round(rankingsDataToUse.reduce((sum, k) => sum + k.position, 0) / rankingsDataToUse.length);
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Rankings Report</h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-text-primary">Rankings Report</h1>
+            <DataSourceIndicator source={rankingsSource} isLoading={rankingsLoading} onRefresh={refetchRankings} compact />
+          </div>
           <p className="text-text-secondary">
             Track keyword position changes over time
           </p>
@@ -70,7 +173,7 @@ export default function RankingsReportPage() {
             <Calendar className="h-4 w-4 mr-2" />
             Last 30 Days
           </Button>
-          <Button variant="secondary">
+          <Button variant="secondary" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
@@ -81,7 +184,7 @@ export default function RankingsReportPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Keywords Tracked"
-          value={rankingData.length}
+          value={rankingsDataToUse.length}
           trendLabel="total keywords"
           icon={<Target className="h-5 w-5" />}
         />
@@ -157,7 +260,7 @@ export default function RankingsReportPage() {
                 </tr>
               </thead>
               <tbody>
-                {rankingData.map((keyword, index) => (
+                {rankingsDataToUse.map((keyword, index) => (
                   <tr key={index} className="border-b border-border hover:bg-bg-elevated">
                     <td className="p-4 font-medium text-text-primary">{keyword.keyword}</td>
                     <td className="p-4 text-center">

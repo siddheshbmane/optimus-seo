@@ -42,8 +42,12 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalFooter } from "@/components/ui/modal";
-import { getProjectById } from "@/data/mock-projects";
-import { mockKeywords, generateMockKeywords, type Keyword } from "@/data/mock-keywords";
+import { generateMockKeywords, type Keyword } from "@/data/mock-keywords";
+import { useKeywordData } from "@/hooks/use-seo-data";
+import { useProjectContext } from "@/contexts/project-context";
+import { useProjectConfig } from "@/contexts/project-config-context";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
+import { exportKeywords, type KeywordExportData } from "@/lib/export";
 import {
   mockKeywordOpportunities,
   mockKeywordClusters,
@@ -112,7 +116,8 @@ const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
 export default function KeywordResearchPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
+  const { config, addKeyword, addKeywords } = useProjectConfig();
 
   const [activeTab, setActiveTab] = React.useState<TabType>("overview");
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -158,13 +163,60 @@ export default function KeywordResearchPage() {
   // Discover keywords state
   const [seedKeyword, setSeedKeyword] = React.useState("");
   const [discoverType, setDiscoverType] = React.useState<"related" | "questions" | "longtail">("related");
+  
+  // Export state
+  const [exportFormat, setExportFormat] = React.useState<"csv" | "json" | "html">("csv");
+
+  // Keyword search/discover state
+  const [isDiscovering, setIsDiscovering] = React.useState(false);
+  const [discoveredKeywords, setDiscoveredKeywords] = React.useState<Keyword[]>([]);
+  const [trackingFeedback, setTrackingFeedback] = React.useState<string | null>(null);
 
   const pageSize = 20;
 
-  // Generate more keywords for demo
-  const allKeywords = React.useMemo(() => {
+  // Fetch keywords from API (with mock fallback)
+  const { data: apiKeywords, isLoading: keywordsLoading, source: keywordsSource, refetch: refetchKeywords } = useKeywordData(
+    project?.url || '',
+    project?.locationCode || 2840
+  );
+
+  // Use API keywords if available, otherwise generate mock keywords
+  const allKeywords: Keyword[] = React.useMemo(() => {
+    if (apiKeywords && apiKeywords.length > 0) {
+      // Transform API keywords to match Keyword type
+      return apiKeywords.map((kw, index) => ({
+        id: kw.id || String(index + 1),
+        keyword: kw.keyword,
+        volume: kw.volume,
+        difficulty: kw.difficulty,
+        cpc: kw.cpc,
+        intent: kw.intent,
+        trend: kw.trend || [],
+        position: kw.position ?? 0,
+        previousPosition: kw.previousPosition ?? 0,
+        // Default values for fields not provided by API
+        type: inferKeywordType(kw.keyword) as Keyword['type'],
+        url: '/',
+        featuredSnippet: false,
+        paaQuestions: [],
+      }));
+    }
+    // Fallback to mock data
     return generateMockKeywords(110);
-  }, []);
+  }, [apiKeywords]);
+
+  // Helper function to infer keyword type from the keyword text
+  function inferKeywordType(keyword: string): string {
+    const words = keyword.split(' ').length;
+    if (words >= 4) return 'long-tail';
+    if (words === 1) return 'short-tail';
+    // Check for common brand indicators
+    const brandIndicators = ['corp', 'inc', 'llc', 'company', 'brand'];
+    if (brandIndicators.some(indicator => keyword.toLowerCase().includes(indicator))) {
+      return 'branded';
+    }
+    return 'generic';
+  }
 
   if (!project) return null;
 
@@ -285,9 +337,79 @@ export default function KeywordResearchPage() {
   );
 
   const handleAddToStrategy = () => {
+    // Get selected keyword texts and add to project config tracking
+    const keywordsToAdd = allKeywords
+      .filter(kw => selectedKeywords.has(kw.id))
+      .map(kw => kw.keyword);
+
+    if (keywordsToAdd.length > 0) {
+      addKeywords(keywordsToAdd);
+      setTrackingFeedback(`Added ${keywordsToAdd.length} keyword${keywordsToAdd.length > 1 ? 's' : ''} to tracking`);
+      setTimeout(() => setTrackingFeedback(null), 3000);
+    }
+
     setShowAddToStrategy(false);
     setSelectedGroup(null);
     setSelectedKeywords(new Set());
+  };
+
+  const handleAddSingleKeyword = (keyword: string) => {
+    addKeyword(keyword);
+    setTrackingFeedback(`"${keyword}" added to tracking`);
+    setTimeout(() => setTrackingFeedback(null), 3000);
+  };
+
+  const handleDiscoverKeywords = async () => {
+    if (!seedKeyword.trim()) return;
+
+    setIsDiscovering(true);
+    try {
+      const response = await fetch('/api/dataforseo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'keywordIdeas',
+          params: {
+            keyword: seedKeyword.trim(),
+            locationCode: project?.locationCode || 2840,
+            languageCode: 'en',
+            limit: 50,
+          },
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.tasks?.[0]?.result) {
+          // Handle nested Labs structure: result[0].items[]
+          const rawResult = result.tasks[0].result;
+          const rawItems = rawResult[0]?.items || rawResult || [];
+          const ideas = (Array.isArray(rawItems) ? rawItems : []).map((item: Record<string, unknown>, index: number) => {
+            const kwInfo = (item.keyword_info as Record<string, unknown>) || {};
+            return {
+              id: `discovered-${index + 1}`,
+              keyword: String(item.keyword || ''),
+              volume: Number(kwInfo.search_volume || item.search_volume || 0),
+              difficulty: Number(kwInfo.keyword_difficulty || item.keyword_difficulty || 50),
+              cpc: Number(kwInfo.cpc || item.cpc || 0),
+              intent: 'informational' as const,
+              trend: [],
+              position: 0,
+              previousPosition: 0,
+              type: 'generic' as Keyword['type'],
+              url: '/',
+              featuredSnippet: false,
+              paaQuestions: [],
+            };
+          });
+          setDiscoveredKeywords(ideas);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to discover keywords:', error);
+    } finally {
+      setIsDiscovering(false);
+    }
   };
 
   // Stats
@@ -484,6 +606,7 @@ export default function KeywordResearchPage() {
                   </th>
                   <th className="p-4 text-center">Trend</th>
                   <th className="p-4 text-center">Intent</th>
+                  <th className="p-4 text-center">Track</th>
                 </tr>
               </thead>
               <tbody>
@@ -614,6 +737,27 @@ export default function KeywordResearchPage() {
                       >
                         {keyword.intent.charAt(0).toUpperCase()}
                       </Badge>
+                    </td>
+                    <td className="p-4 text-center">
+                      {config?.keywords.some(k => k.keyword.toLowerCase() === keyword.keyword.toLowerCase()) ? (
+                        <Badge variant="success" className="text-xs gap-1">
+                          <Check className="h-3 w-3" />
+                          Tracked
+                        </Badge>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAddSingleKeyword(keyword.keyword);
+                          }}
+                          className="h-7 px-2 text-xs"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Track
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1556,15 +1700,32 @@ export default function KeywordResearchPage() {
 
   return (
     <div className="space-y-6">
+      {/* Tracking Feedback Toast */}
+      {trackingFeedback && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg bg-success text-white shadow-lg animate-in slide-in-from-right">
+          <Check className="h-4 w-4" />
+          <span className="text-sm font-medium">{trackingFeedback}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">
-            Predictive Keyword Intelligence
-          </h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-text-primary">
+              Predictive Keyword Intelligence
+            </h1>
+            <DataSourceIndicator
+              source={keywordsSource}
+              isLoading={keywordsLoading}
+              onRefresh={refetchKeywords}
+              compact
+            />
+          </div>
           <p className="text-text-secondary">
             {formatNumber(allKeywords.length)} keywords tracked •{" "}
-            {formatNumber(rankingKeywords)} ranking • AI-powered insights
+            {formatNumber(rankingKeywords)} ranking
+            {config?.keywords.length ? ` • ${config.keywords.length} in tracking` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1824,13 +1985,79 @@ export default function KeywordResearchPage() {
             </div>
           </div>
 
+          {/* Discovered Keywords Results */}
+          {discoveredKeywords.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-text-primary">
+                  Discovered Keywords ({discoveredKeywords.length})
+                </h4>
+                <Button
+                  variant="accent"
+                  size="sm"
+                  onClick={() => {
+                    const kwTexts = discoveredKeywords.map(kw => kw.keyword);
+                    addKeywords(kwTexts);
+                    setTrackingFeedback(`Added ${kwTexts.length} keywords to tracking`);
+                    setTimeout(() => setTrackingFeedback(null), 3000);
+                  }}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Track All
+                </Button>
+              </div>
+              <div className="max-h-[250px] overflow-y-auto space-y-1">
+                {discoveredKeywords.slice(0, 20).map((kw) => (
+                  <div key={kw.id} className="flex items-center justify-between p-2 rounded-lg border border-border">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-text-primary">{kw.keyword}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-text-muted">{formatNumber(kw.volume)} vol</span>
+                      <span className={cn("text-xs font-mono", getDifficultyColor(kw.difficulty))}>{kw.difficulty} KD</span>
+                      <span className="text-xs text-text-muted">${kw.cpc.toFixed(2)}</span>
+                      {config?.keywords.some(k => k.keyword.toLowerCase() === kw.keyword.toLowerCase()) ? (
+                        <Badge variant="success" className="text-xs"><Check className="h-3 w-3" /></Badge>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-1.5"
+                          onClick={() => handleAddSingleKeyword(kw.keyword)}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <ModalFooter>
-            <Button variant="secondary" onClick={() => setShowDiscoverKeywords(false)}>
+            <Button variant="secondary" onClick={() => {
+              setShowDiscoverKeywords(false);
+              setDiscoveredKeywords([]);
+            }}>
               Cancel
             </Button>
-            <Button variant="accent" disabled={!seedKeyword.trim()}>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Discover Keywords
+            <Button
+              variant="accent"
+              disabled={!seedKeyword.trim() || isDiscovering}
+              onClick={handleDiscoverKeywords}
+            >
+              {isDiscovering ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Discovering...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Discover Keywords
+                </>
+              )}
             </Button>
           </ModalFooter>
         </div>
@@ -1851,13 +2078,19 @@ export default function KeywordResearchPage() {
             </label>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { value: "csv", label: "CSV", desc: "Spreadsheet format" },
-                { value: "xlsx", label: "Excel", desc: "Microsoft Excel" },
-                { value: "json", label: "JSON", desc: "Developer format" },
+                { value: "csv" as const, label: "CSV", desc: "Spreadsheet format" },
+                { value: "html" as const, label: "HTML", desc: "Print-ready report" },
+                { value: "json" as const, label: "JSON", desc: "Developer format" },
               ].map((format) => (
                 <button
                   key={format.value}
-                  className="p-4 rounded-lg border border-border hover:border-accent/50 text-left transition-colors"
+                  onClick={() => setExportFormat(format.value)}
+                  className={cn(
+                    "p-4 rounded-lg border text-left transition-colors",
+                    exportFormat === format.value 
+                      ? "border-accent bg-accent/10" 
+                      : "border-border hover:border-accent/50"
+                  )}
                 >
                   <p className="font-medium text-text-primary">{format.label}</p>
                   <p className="text-xs text-text-muted mt-1">{format.desc}</p>
@@ -1870,9 +2103,34 @@ export default function KeywordResearchPage() {
             <Button variant="secondary" onClick={() => setShowExportModal(false)}>
               Cancel
             </Button>
-            <Button variant="accent">
+            <Button 
+              variant="accent"
+              onClick={() => {
+                // Get keywords to export (selected or all)
+                const keywordsToExport = selectedKeywords.size > 0
+                  ? filteredKeywords.filter(kw => selectedKeywords.has(kw.id))
+                  : filteredKeywords;
+                
+                // Transform to export format
+                const exportData: KeywordExportData[] = keywordsToExport.map(kw => ({
+                  keyword: kw.keyword,
+                  volume: kw.volume,
+                  difficulty: kw.difficulty,
+                  cpc: kw.cpc,
+                  position: kw.position || null,
+                  intent: kw.intent,
+                }));
+                
+                // Export with selected format
+                const filename = `keywords-${project?.name || 'export'}-${new Date().toISOString().split('T')[0]}`;
+                exportKeywords(exportData, exportFormat, filename);
+                
+                // Close modal
+                setShowExportModal(false);
+              }}
+            >
               <Download className="h-4 w-4 mr-2" />
-              Export
+              Export {selectedKeywords.size > 0 ? selectedKeywords.size : filteredKeywords.length} Keywords
             </Button>
           </ModalFooter>
         </div>
@@ -1940,9 +2198,20 @@ export default function KeywordResearchPage() {
               <Button variant="secondary" onClick={() => setShowClusterDetail(false)}>
                 Close
               </Button>
-              <Button variant="accent">
+              <Button
+                variant="accent"
+                onClick={() => {
+                  if (selectedCluster) {
+                    const kwTexts = selectedCluster.keywords.map(kw => kw.keyword);
+                    addKeywords(kwTexts);
+                    setTrackingFeedback(`Added ${kwTexts.length} keywords from "${selectedCluster.name}" to tracking`);
+                    setTimeout(() => setTrackingFeedback(null), 3000);
+                    setShowClusterDetail(false);
+                  }
+                }}
+              >
                 <Plus className="h-4 w-4 mr-2" />
-                Add All to Strategy
+                Add All to Tracking
               </Button>
             </ModalFooter>
           </div>
@@ -2066,9 +2335,17 @@ export default function KeywordResearchPage() {
               <Button variant="secondary" onClick={() => setShowIntentDetail(false)}>
                 Close
               </Button>
-              <Button variant="accent">
+              <Button
+                variant="accent"
+                onClick={() => {
+                  if (selectedIntent) {
+                    handleAddSingleKeyword(selectedIntent.keyword);
+                    setShowIntentDetail(false);
+                  }
+                }}
+              >
                 <Plus className="h-4 w-4 mr-2" />
-                Create Content Brief
+                Add to Tracking
               </Button>
             </ModalFooter>
           </div>
@@ -2131,9 +2408,17 @@ export default function KeywordResearchPage() {
               <Button variant="secondary" onClick={() => setShowOpportunityDetail(false)}>
                 Close
               </Button>
-              <Button variant="accent">
+              <Button
+                variant="accent"
+                onClick={() => {
+                  if (selectedOpportunity) {
+                    handleAddSingleKeyword(selectedOpportunity.keyword);
+                    setShowOpportunityDetail(false);
+                  }
+                }}
+              >
                 <Plus className="h-4 w-4 mr-2" />
-                Add to Strategy
+                Add to Tracking
               </Button>
             </ModalFooter>
           </div>

@@ -20,7 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
+import { useContentIdeas } from "@/hooks/use-seo-data";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
 import { formatNumber, cn } from "@/lib/utils";
 
 const contentStats = {
@@ -136,16 +138,61 @@ const contentByType = [
 export default function ContentReportPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
+
+  // Fetch content ideas from API (with mock fallback)
+  const { data: apiContentIdeas, isLoading, source, refetch } = useContentIdeas(
+    project?.url || ''
+  );
 
   if (!project) return null;
+
+  // Use API data to augment stats when available
+  const contentStatsToUse = React.useMemo(() => {
+    if (apiContentIdeas && apiContentIdeas.length > 0) {
+      return {
+        ...contentStats,
+        topPerforming: apiContentIdeas.filter(c => c.priority === 'high').length,
+        needsOptimization: apiContentIdeas.filter(c => c.priority === 'low' || c.priority === 'medium').length,
+      };
+    }
+    return contentStats;
+  }, [apiContentIdeas]);
+
+  // Use API content ideas for top content table when available
+  const topContentToUse = React.useMemo(() => {
+    if (apiContentIdeas && apiContentIdeas.length > 0) {
+      return apiContentIdeas
+        .sort((a, b) => b.estimatedTraffic - a.estimatedTraffic)
+        .slice(0, 5)
+        .map((idea, index) => ({
+          id: index + 1,
+          title: idea.title,
+          url: `/${idea.type}/${idea.keyword.replace(/\s+/g, '-').toLowerCase()}`,
+          traffic: idea.estimatedTraffic,
+          keywords: Math.round(idea.volume / 100),
+          position: Math.round(idea.difficulty / 10),
+          trend: idea.priority === 'high' ? 15 : idea.priority === 'medium' ? 5 : -3,
+          score: 100 - idea.difficulty,
+        }));
+    }
+    return topContent;
+  }, [apiContentIdeas]);
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Content Report</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-text-primary">Content Report</h1>
+            <DataSourceIndicator
+              source={source}
+              isLoading={isLoading}
+              onRefresh={refetch}
+              compact
+            />
+          </div>
           <p className="text-text-secondary">
             Analyze content performance and identify optimization opportunities
           </p>
@@ -166,27 +213,27 @@ export default function ContentReportPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Total Pages"
-          value={contentStats.totalPages}
-          trend={contentStats.publishedThisMonth}
+          value={contentStatsToUse.totalPages}
+          trend={contentStatsToUse.publishedThisMonth}
           trendLabel="this month"
           icon={<FileText className="h-5 w-5" />}
         />
         <StatCard
           label="Avg Word Count"
-          value={formatNumber(contentStats.avgWordCount)}
+          value={formatNumber(contentStatsToUse.avgWordCount)}
           trendLabel="per page"
           icon={<BarChart3 className="h-5 w-5" />}
         />
         <StatCard
           label="Top Performing"
-          value={contentStats.topPerforming}
+          value={contentStatsToUse.topPerforming}
           trendLabel="pages"
           icon={<TrendingUp className="h-5 w-5" />}
           variant="accent"
         />
         <StatCard
           label="Needs Optimization"
-          value={contentStats.needsOptimization}
+          value={contentStatsToUse.needsOptimization}
           trendLabel="pages"
           icon={<AlertCircle className="h-5 w-5" />}
         />
@@ -211,7 +258,7 @@ export default function ContentReportPage() {
                 </tr>
               </thead>
               <tbody>
-                {topContent.map((content) => (
+                {topContentToUse.map((content) => (
                   <tr key={content.id} className="border-b border-border hover:bg-bg-elevated">
                     <td className="p-4">
                       <div>

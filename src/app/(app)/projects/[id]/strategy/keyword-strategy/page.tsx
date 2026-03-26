@@ -24,7 +24,10 @@ import { Badge } from "@/components/ui/badge";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { SlidePanel } from "@/components/ui/slide-panel";
 import { Input } from "@/components/ui/input";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
+import { useProjectConfig } from "@/contexts/project-config-context";
+import { useKeywordData } from "@/hooks/use-seo-data";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
 import { formatNumber, getDifficultyColor, cn } from "@/lib/utils";
 
 interface KeywordGroup {
@@ -107,8 +110,9 @@ export default function KeywordStrategyPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
-  
+  const { project } = useProjectContext();
+  const { addKeyword } = useProjectConfig();
+
   const [keywordGroups, setKeywordGroups] = React.useState(initialKeywordGroups);
   const [prioritizedKeywords, setPrioritizedKeywords] = React.useState(initialPrioritizedKeywords);
   const [showNewGroupModal, setShowNewGroupModal] = React.useState(false);
@@ -134,6 +138,27 @@ export default function KeywordStrategyPage() {
   // Export modal
   const [showExportModal, setShowExportModal] = React.useState(false);
 
+  // Fetch keyword data from API (with mock fallback)
+  const { data: apiKeywords, isLoading: keywordsLoading, source: keywordsSource, refetch: refetchKeywords } = useKeywordData(
+    project?.url || ''
+  );
+
+  // Transform API keywords to prioritized format
+  const apiPrioritizedKeywords = React.useMemo(() => {
+    if (apiKeywords && apiKeywords.length > 0) {
+      return apiKeywords.slice(0, 20).map((kw, index) => ({
+        id: index + 1,
+        keyword: kw.keyword,
+        volume: kw.volume,
+        difficulty: kw.difficulty,
+        priority: kw.volume > 10000 ? "high" : kw.volume > 5000 ? "medium" : "low",
+        status: kw.position && kw.position <= 10 ? "ranking" : kw.position ? "targeting" : "planned",
+        content: Math.floor(Math.random() * 3),
+      }));
+    }
+    return null;
+  }, [apiKeywords]);
+
   // Close dropdown when clicking outside
   React.useEffect(() => {
     const handleClickOutside = () => setShowActionDropdown(null);
@@ -147,9 +172,12 @@ export default function KeywordStrategyPage() {
 
   const totalKeywords = keywordGroups.reduce((sum, g) => sum + g.keywords, 0);
   
+  // Use API keywords if available, otherwise use state
+  const keywordsToUse = apiPrioritizedKeywords || prioritizedKeywords;
+  
   const filteredKeywords = filterPriority === "all" 
-    ? prioritizedKeywords 
-    : prioritizedKeywords.filter(k => k.priority === filterPriority);
+    ? keywordsToUse 
+    : keywordsToUse.filter(k => k.priority === filterPriority);
 
   const handleAddGroup = () => {
     const group: KeywordGroup = {
@@ -207,7 +235,10 @@ export default function KeywordStrategyPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Keyword Strategy</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-text-primary">Keyword Strategy</h1>
+            <DataSourceIndicator source={keywordsSource} isLoading={keywordsLoading} onRefresh={refetchKeywords} compact />
+          </div>
           <p className="text-text-secondary">
             Plan and prioritize your target keywords
           </p>
@@ -706,7 +737,7 @@ export default function KeywordStrategyPage() {
                         KD: {suggestion.difficulty}
                       </p>
                     </div>
-                    <Button variant="secondary" size="sm">
+                    <Button variant="secondary" size="sm" onClick={() => addKeyword(suggestion.keyword)}>
                       <Plus className="h-3 w-3 mr-1" />
                       Add
                     </Button>

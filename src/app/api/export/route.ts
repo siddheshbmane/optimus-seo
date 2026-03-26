@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/api/auth';
 import {
   generateCSV,
   generatePDFHTML,
@@ -11,12 +12,14 @@ import {
 // GET - List export jobs
 export async function GET() {
   try {
+    await requireAuth();
     const jobs = listExportJobs();
     return NextResponse.json({
       success: true,
       data: jobs,
     });
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error('Error listing export jobs:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to list export jobs' },
@@ -28,6 +31,7 @@ export async function GET() {
 // POST - Create export
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth();
     const body = await request.json();
     const { 
       type = 'csv', 
@@ -103,6 +107,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error('Error creating export:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to create export' },

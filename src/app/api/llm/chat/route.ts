@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { llmClient, type LLMMessage, type LLMCompletionOptions } from '@/lib/llm/client';
+import { requireAuth } from '@/lib/api/auth';
 
 interface RequestBody {
   messages: LLMMessage[];
@@ -14,6 +15,7 @@ interface RequestBody {
 
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth();
     const body: RequestBody = await request.json();
     const { messages, model, maxTokens, temperature, provider } = body;
 
@@ -44,6 +46,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error('LLM API error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },

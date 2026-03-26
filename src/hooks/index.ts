@@ -51,3 +51,32 @@ export {
 
 // Export hooks
 export { useExport } from './use-export';
+
+// Project hooks
+export { 
+  useProjects, 
+  useDashboardProjects, 
+  useProject,
+  type Project,
+  type DashboardProject,
+} from './use-projects';
+
+// Agent hooks
+export {
+  useAgentActivity,
+  useAgentSchedules,
+  useAgentRuns,
+  type AgentActivity,
+} from './use-agents';
+
+// SEO Data hooks (with API + mock fallback)
+export {
+  useKeywordData,
+  useSiteAuditData,
+  useCompetitorData,
+  useAIVisibilityData,
+  type KeywordData,
+  type SiteAuditData,
+  type CompetitorData,
+  type AIVisibilityData,
+} from './use-seo-data';

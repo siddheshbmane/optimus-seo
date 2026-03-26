@@ -22,15 +22,13 @@ import {
   Eye,
   Code,
   Brain,
-  Sparkles,
   Calendar,
-  ArrowRight,
   ChevronRight,
   Filter,
   Download,
   History,
   Cpu,
-  Layers,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,9 +37,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { formatNumber, cn } from "@/lib/utils";
+import { useAgentSchedules, useAgentRuns, useAgentActivity } from "@/hooks";
+import type { AgentSchedule, AgentRun, AgentType } from "@/lib/agent-scheduler/scheduler";
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -65,144 +63,65 @@ const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
   { id: "settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
 ];
 
-// Mock data
-const mockAgents = [
+// Agent definitions with UI metadata
+interface AgentDefinition {
+  id: string;
+  agentType: AgentType;
+  name: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  color: string;
+}
+
+const agentDefinitions: AgentDefinition[] = [
   {
     id: "agent-1",
+    agentType: "keyword_research",
     name: "Keyword Intelligence Agent",
     description: "Analyzes keywords, predicts trends, and identifies opportunities",
-    status: "active",
-    tasksCompleted: 1247,
-    successRate: 98.5,
-    avgResponseTime: 2.3,
-    lastRun: "2 minutes ago",
     icon: Target,
     color: "#FD8C73",
   },
   {
     id: "agent-2",
+    agentType: "site_auditor",
     name: "Technical SEO Agent",
     description: "Crawls sites, identifies issues, and generates fix code",
-    status: "active",
-    tasksCompleted: 856,
-    successRate: 97.2,
-    avgResponseTime: 4.5,
-    lastRun: "5 minutes ago",
     icon: Code,
     color: "#6366F1",
   },
   {
     id: "agent-3",
+    agentType: "content_optimizer",
     name: "Content Intelligence Agent",
     description: "Generates briefs, analyzes competitors, and optimizes content",
-    status: "active",
-    tasksCompleted: 623,
-    successRate: 96.8,
-    avgResponseTime: 3.8,
-    lastRun: "10 minutes ago",
     icon: FileText,
     color: "#10B981",
   },
   {
     id: "agent-4",
+    agentType: "backlink_monitor",
     name: "Link Building Agent",
     description: "Finds opportunities, analyzes backlinks, and suggests outreach",
-    status: "paused",
-    tasksCompleted: 412,
-    successRate: 94.5,
-    avgResponseTime: 5.2,
-    lastRun: "1 hour ago",
     icon: Link2,
     color: "#F59E0B",
   },
   {
     id: "agent-5",
+    agentType: "competitor_analyzer",
     name: "Competitive Intel Agent",
     description: "Monitors competitors, tracks changes, and identifies gaps",
-    status: "active",
-    tasksCompleted: 534,
-    successRate: 97.8,
-    avgResponseTime: 3.1,
-    lastRun: "15 minutes ago",
     icon: Eye,
     color: "#8B5CF6",
   },
   {
     id: "agent-6",
-    name: "AI Visibility Agent",
-    description: "Tracks LLM mentions, monitors AI search, and optimizes for AI",
-    status: "active",
-    tasksCompleted: 289,
-    successRate: 99.1,
-    avgResponseTime: 2.8,
-    lastRun: "3 minutes ago",
+    agentType: "report_generator",
+    name: "Report Generator Agent",
+    description: "Generates comprehensive SEO reports and performance summaries",
     icon: Brain,
     color: "#EC4899",
   },
-];
-
-const mockAutomations = [
-  {
-    id: "auto-1",
-    name: "Daily Rank Tracking",
-    trigger: "Schedule: Every day at 6 AM",
-    agent: "Keyword Intelligence Agent",
-    status: "active",
-    lastRun: "Today, 6:00 AM",
-    nextRun: "Tomorrow, 6:00 AM",
-    runsCompleted: 156,
-  },
-  {
-    id: "auto-2",
-    name: "Weekly Site Audit",
-    trigger: "Schedule: Every Monday at 9 AM",
-    agent: "Technical SEO Agent",
-    status: "active",
-    lastRun: "Monday, 9:00 AM",
-    nextRun: "Next Monday, 9:00 AM",
-    runsCompleted: 24,
-  },
-  {
-    id: "auto-3",
-    name: "Competitor Alert",
-    trigger: "Event: Competitor ranking change > 5 positions",
-    agent: "Competitive Intel Agent",
-    status: "active",
-    lastRun: "2 hours ago",
-    nextRun: "On trigger",
-    runsCompleted: 89,
-  },
-  {
-    id: "auto-4",
-    name: "Content Brief Generation",
-    trigger: "Manual: On new keyword added",
-    agent: "Content Intelligence Agent",
-    status: "active",
-    lastRun: "Yesterday, 3:45 PM",
-    nextRun: "On trigger",
-    runsCompleted: 45,
-  },
-  {
-    id: "auto-5",
-    name: "AI Visibility Check",
-    trigger: "Schedule: Every 4 hours",
-    agent: "AI Visibility Agent",
-    status: "active",
-    lastRun: "2 hours ago",
-    nextRun: "In 2 hours",
-    runsCompleted: 312,
-  },
-];
-
-const mockActivityLogs = [
-  { id: 1, agent: "Keyword Intelligence Agent", action: "Analyzed 350 keywords", status: "success", time: "2 minutes ago", duration: "2.3s" },
-  { id: 2, agent: "AI Visibility Agent", action: "Checked LLM mentions for 25 queries", status: "success", time: "3 minutes ago", duration: "4.1s" },
-  { id: 3, agent: "Technical SEO Agent", action: "Crawled 156 pages", status: "success", time: "5 minutes ago", duration: "45.2s" },
-  { id: 4, agent: "Competitive Intel Agent", action: "Updated competitor data for 5 domains", status: "success", time: "15 minutes ago", duration: "8.7s" },
-  { id: 5, agent: "Content Intelligence Agent", action: "Generated content brief for 'AI SEO Tools'", status: "success", time: "25 minutes ago", duration: "12.4s" },
-  { id: 6, agent: "Link Building Agent", action: "Found 23 new backlink opportunities", status: "warning", time: "1 hour ago", duration: "15.8s" },
-  { id: 7, agent: "Keyword Intelligence Agent", action: "Predicted trends for Q2 2026", status: "success", time: "1 hour ago", duration: "5.6s" },
-  { id: 8, agent: "Technical SEO Agent", action: "Generated fix code for 12 issues", status: "success", time: "2 hours ago", duration: "3.2s" },
 ];
 
 const mockAgentPerformance = [
@@ -229,11 +148,129 @@ export default function AgentsPage() {
   const [showAgentDetail, setShowAgentDetail] = React.useState(false);
   const [showCreateAutomation, setShowCreateAutomation] = React.useState(false);
   const [showAgentConfig, setShowAgentConfig] = React.useState(false);
-  const [selectedAgent, setSelectedAgent] = React.useState<typeof mockAgents[0] | null>(null);
+  const [showRunResult, setShowRunResult] = React.useState(false);
+  const [selectedAgent, setSelectedAgent] = React.useState<AgentDefinition | null>(null);
+  const [selectedRun, setSelectedRun] = React.useState<AgentRun | null>(null);
+  const [executingAgents, setExecutingAgents] = React.useState<Set<string>>(new Set());
 
-  const totalTasks = mockAgents.reduce((s, a) => s + a.tasksCompleted, 0);
-  const avgSuccessRate = mockAgents.reduce((s, a) => s + a.successRate, 0) / mockAgents.length;
-  const activeAgents = mockAgents.filter(a => a.status === "active").length;
+  // New automation form state
+  const [newAutoName, setNewAutoName] = React.useState("");
+  const [newAutoAgent, setNewAutoAgent] = React.useState<AgentType>("keyword_research");
+  const [newAutoFrequency, setNewAutoFrequency] = React.useState("daily");
+
+  // Hooks for real API data
+  const {
+    schedules,
+    isLoading: schedulesLoading,
+    refetch: refetchSchedules,
+    toggleSchedule,
+    executeSchedule,
+    createSchedule,
+  } = useAgentSchedules();
+
+  const {
+    runs,
+    isLoading: runsLoading,
+    refetch: refetchRuns,
+  } = useAgentRuns();
+
+  const {
+    activities,
+    refetch: refetchActivities,
+  } = useAgentActivity();
+
+  const isLoading = schedulesLoading || runsLoading;
+
+  // Computed stats
+  const completedRuns = runs.filter(r => r.status === "completed").length;
+  const failedRuns = runs.filter(r => r.status === "failed").length;
+  const successRate = runs.length > 0 ? ((completedRuns / runs.length) * 100) : 100;
+  const activeSchedules = schedules.filter(s => s.enabled).length;
+
+  // Get schedule for an agent type
+  const getScheduleForAgent = (agentType: AgentType): AgentSchedule | undefined => {
+    return schedules.find(s => s.agentType === agentType);
+  };
+
+  // Handle running an agent
+  const handleExecuteAgent = async (agentDef: AgentDefinition) => {
+    let schedule = getScheduleForAgent(agentDef.agentType);
+
+    // If no schedule exists, create one first
+    if (!schedule) {
+      const created = await createSchedule({
+        name: `${agentDef.name} - On Demand`,
+        agentType: agentDef.agentType,
+        frequency: "daily",
+        config: {},
+      });
+      if (!created) return;
+      schedule = created;
+    }
+
+    setExecutingAgents(prev => new Set(prev).add(agentDef.agentType));
+
+    const run = await executeSchedule(schedule.id);
+
+    setExecutingAgents(prev => {
+      const next = new Set(prev);
+      next.delete(agentDef.agentType);
+      return next;
+    });
+
+    if (run) {
+      setSelectedRun(run);
+      setShowRunResult(true);
+      // Refresh data
+      refetchRuns();
+      refetchActivities();
+    }
+  };
+
+  // Handle toggling an agent schedule
+  const handleToggleAgent = async (agentDef: AgentDefinition) => {
+    const schedule = getScheduleForAgent(agentDef.agentType);
+    if (schedule) {
+      await toggleSchedule(schedule.id);
+    }
+  };
+
+  // Handle creating a new automation
+  const handleCreateAutomation = async () => {
+    if (!newAutoName.trim()) return;
+
+    const result = await createSchedule({
+      name: newAutoName,
+      agentType: newAutoAgent,
+      frequency: newAutoFrequency,
+      config: {},
+    });
+
+    if (result) {
+      setShowCreateAutomation(false);
+      setNewAutoName("");
+      setNewAutoAgent("keyword_research");
+      setNewAutoFrequency("daily");
+    }
+  };
+
+  // Handle refresh all
+  const handleRefresh = async () => {
+    await Promise.all([refetchSchedules(), refetchRuns(), refetchActivities()]);
+  };
+
+  // Format LLM result for display
+  const formatRunResult = (run: AgentRun): string => {
+    if (!run.result) return "No results available.";
+    const result = run.result as Record<string, unknown>;
+    if (result.llmAnalysis) {
+      return String(result.llmAnalysis);
+    }
+    if (result.llmError) {
+      return `LLM unavailable (${result.llmError}). Run completed with local analysis.`;
+    }
+    return JSON.stringify(result, null, 2);
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -256,26 +293,26 @@ export default function AgentsPage() {
     <>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label="Active Agents"
-          value={`${activeAgents}/${mockAgents.length}`}
+          label="Active Schedules"
+          value={`${activeSchedules}/${schedules.length}`}
           icon={<Bot className="h-5 w-5" />}
           variant="accent"
         />
         <StatCard
-          label="Tasks Completed"
-          value={formatNumber(totalTasks)}
+          label="Total Runs"
+          value={formatNumber(runs.length)}
           trend={18.5}
           trendLabel="this week"
           icon={<CheckCircle className="h-5 w-5" />}
         />
         <StatCard
-          label="Avg. Success Rate"
-          value={`${avgSuccessRate.toFixed(1)}%`}
+          label="Success Rate"
+          value={`${successRate.toFixed(1)}%`}
           icon={<TrendingUp className="h-5 w-5" />}
         />
         <StatCard
           label="Active Automations"
-          value={mockAutomations.filter(a => a.status === "active").length}
+          value={activeSchedules}
           icon={<Zap className="h-5 w-5" />}
         />
       </div>
@@ -332,6 +369,7 @@ export default function AgentsPage() {
         </Card>
       </div>
 
+      {/* Agent Status Cards */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -343,16 +381,19 @@ export default function AgentsPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {mockAgents.slice(0, 6).map((agent) => {
+            {agentDefinitions.slice(0, 6).map((agent) => {
               const Icon = agent.icon;
+              const schedule = getScheduleForAgent(agent.agentType);
+              const isActive = schedule?.enabled ?? false;
+              const isExecuting = executingAgents.has(agent.agentType);
               return (
                 <div
                   key={agent.id}
+                  className="p-4 rounded-lg border border-border hover:border-accent/50 transition-colors cursor-pointer"
                   onClick={() => {
                     setSelectedAgent(agent);
                     setShowAgentDetail(true);
                   }}
-                  className="p-4 rounded-lg border border-border hover:border-accent/50 transition-colors cursor-pointer"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
@@ -364,16 +405,28 @@ export default function AgentsPage() {
                       </div>
                       <div>
                         <p className="font-medium text-text-primary text-sm">{agent.name}</p>
-                        <p className="text-xs text-text-muted">{agent.lastRun}</p>
+                        <p className="text-xs text-text-muted">
+                          {schedule?.lastRunAt
+                            ? `Last run: ${new Date(schedule.lastRunAt).toLocaleString()}`
+                            : "Never run"}
+                        </p>
                       </div>
                     </div>
-                    <Badge variant={agent.status === "active" ? "success" : "warning"}>
-                      {agent.status}
+                    <Badge variant={isActive ? "success" : "warning"}>
+                      {isExecuting ? "running" : isActive ? "active" : "paused"}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-text-muted">{formatNumber(agent.tasksCompleted)} tasks</span>
-                    <span className="text-success">{agent.successRate}% success</span>
+                    <span className="text-text-muted">
+                      {schedule ? `${schedule.runCount} runs` : "Not scheduled"}
+                    </span>
+                    {schedule && schedule.runCount > 0 && (
+                      <span className="text-success">
+                        {schedule.runCount > 0
+                          ? `${(((schedule.runCount - schedule.failureCount) / schedule.runCount) * 100).toFixed(0)}% success`
+                          : ""}
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -382,6 +435,7 @@ export default function AgentsPage() {
         </CardContent>
       </Card>
 
+      {/* Recent Runs */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -393,25 +447,53 @@ export default function AgentsPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {mockActivityLogs.slice(0, 5).map((log) => (
-              <div key={log.id} className="flex items-center justify-between p-3 rounded-lg bg-bg-elevated">
-                <div className="flex items-center gap-3">
-                  {log.status === "success" ? (
-                    <CheckCircle className="h-5 w-5 text-success" />
-                  ) : (
-                    <AlertCircle className="h-5 w-5 text-warning" />
-                  )}
-                  <div>
-                    <p className="font-medium text-text-primary text-sm">{log.action}</p>
-                    <p className="text-xs text-text-muted">{log.agent}</p>
+            {runs.length === 0 ? (
+              <p className="text-sm text-text-muted text-center py-4">
+                No agent runs yet. Execute an agent to see activity here.
+              </p>
+            ) : (
+              runs.slice(0, 5).map((run) => (
+                <div
+                  key={run.id}
+                  className="flex items-center justify-between p-3 rounded-lg bg-bg-elevated cursor-pointer hover:bg-bg-elevated/80 transition-colors"
+                  onClick={() => {
+                    setSelectedRun(run);
+                    setShowRunResult(true);
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    {run.status === "completed" ? (
+                      <CheckCircle className="h-5 w-5 text-success" />
+                    ) : run.status === "failed" ? (
+                      <AlertCircle className="h-5 w-5 text-error" />
+                    ) : run.status === "running" ? (
+                      <Loader2 className="h-5 w-5 text-accent animate-spin" />
+                    ) : (
+                      <Clock className="h-5 w-5 text-text-muted" />
+                    )}
+                    <div>
+                      <p className="font-medium text-text-primary text-sm">{run.agentType.replace(/_/g, " ")}</p>
+                      <p className="text-xs text-text-muted">
+                        {run.duration ? `${(run.duration / 1000).toFixed(1)}s` : "In progress..."}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-text-muted">{new Date(run.startedAt).toLocaleString()}</p>
+                    <Badge
+                      variant={
+                        run.status === "completed" ? "success" :
+                        run.status === "failed" ? "error" :
+                        run.status === "running" ? "accent" :
+                        "neutral"
+                      }
+                    >
+                      {run.status}
+                    </Badge>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm text-text-muted">{log.time}</p>
-                  <p className="text-xs text-text-muted">{log.duration}</p>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </CardContent>
       </Card>
@@ -437,72 +519,114 @@ export default function AgentsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {mockAgents.map((agent) => {
-          const Icon = agent.icon;
-          return (
-            <Card
-              key={agent.id}
-              className="cursor-pointer hover:border-accent/50 transition-colors"
-              onClick={() => {
-                setSelectedAgent(agent);
-                setShowAgentDetail(true);
-              }}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-4">
-                    <div
-                      className="h-14 w-14 rounded-xl flex items-center justify-center"
-                      style={{ backgroundColor: `${agent.color}20` }}
-                    >
-                      <Icon className="h-7 w-7" style={{ color: agent.color }} />
+        {agentDefinitions
+          .filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()))
+          .map((agent) => {
+            const Icon = agent.icon;
+            const schedule = getScheduleForAgent(agent.agentType);
+            const isActive = schedule?.enabled ?? false;
+            const isExecuting = executingAgents.has(agent.agentType);
+            return (
+              <Card
+                key={agent.id}
+                className="cursor-pointer hover:border-accent/50 transition-colors"
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-4">
+                      <div
+                        className="h-14 w-14 rounded-xl flex items-center justify-center"
+                        style={{ backgroundColor: `${agent.color}20` }}
+                      >
+                        <Icon className="h-7 w-7" style={{ color: agent.color }} />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-text-primary">{agent.name}</h3>
+                        <p className="text-sm text-text-muted">{agent.description}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-text-primary">{agent.name}</h3>
-                      <p className="text-sm text-text-muted">{agent.description}</p>
+                    <Badge variant={isActive ? "success" : "warning"}>
+                      {isExecuting ? "running" : isActive ? "active" : "paused"}
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="p-3 rounded-lg bg-bg-elevated">
+                      <p className="text-xs text-text-muted">Runs</p>
+                      <p className="text-lg font-semibold">{schedule?.runCount ?? 0}</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-bg-elevated">
+                      <p className="text-xs text-text-muted">Success</p>
+                      <p className="text-lg font-semibold text-success">
+                        {schedule && schedule.runCount > 0
+                          ? `${(((schedule.runCount - schedule.failureCount) / schedule.runCount) * 100).toFixed(0)}%`
+                          : "--"}
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-bg-elevated">
+                      <p className="text-xs text-text-muted">Frequency</p>
+                      <p className="text-lg font-semibold capitalize">{schedule?.frequency ?? "N/A"}</p>
                     </div>
                   </div>
-                  <Badge variant={agent.status === "active" ? "success" : "warning"}>
-                    {agent.status}
-                  </Badge>
-                </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-4">
-                  <div className="p-3 rounded-lg bg-bg-elevated">
-                    <p className="text-xs text-text-muted">Tasks</p>
-                    <p className="text-lg font-semibold">{formatNumber(agent.tasksCompleted)}</p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-bg-elevated">
-                    <p className="text-xs text-text-muted">Success</p>
-                    <p className="text-lg font-semibold text-success">{agent.successRate}%</p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-bg-elevated">
-                    <p className="text-xs text-text-muted">Avg. Time</p>
-                    <p className="text-lg font-semibold">{agent.avgResponseTime}s</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-text-muted">Last run: {agent.lastRun}</span>
-                  <div className="flex items-center gap-2">
-                    {agent.status === "active" ? (
-                      <Button variant="ghost" size="sm">
-                        <Pause className="h-4 w-4" />
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-text-muted">
+                      {schedule?.lastRunAt
+                        ? `Last: ${new Date(schedule.lastRunAt).toLocaleString()}`
+                        : "Never run"}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {/* Run button */}
+                      <Button
+                        variant="accent"
+                        size="sm"
+                        disabled={isExecuting}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExecuteAgent(agent);
+                        }}
+                      >
+                        {isExecuting ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Play className="h-4 w-4" />
+                        )}
+                        <span className="ml-1">{isExecuting ? "Running" : "Run"}</span>
                       </Button>
-                    ) : (
-                      <Button variant="ghost" size="sm">
-                        <Play className="h-4 w-4" />
+                      {/* Toggle button */}
+                      {schedule && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleAgent(agent);
+                          }}
+                        >
+                          {isActive ? (
+                            <Pause className="h-4 w-4" />
+                          ) : (
+                            <Play className="h-4 w-4" />
+                          )}
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedAgent(agent);
+                          setShowAgentDetail(true);
+                        }}
+                      >
+                        <Settings className="h-4 w-4" />
                       </Button>
-                    )}
-                    <Button variant="ghost" size="sm">
-                      <Settings className="h-4 w-4" />
-                    </Button>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+                </CardContent>
+              </Card>
+            );
+          })}
       </div>
     </>
   );
@@ -527,49 +651,92 @@ export default function AgentsPage() {
 
       <Card>
         <CardContent className="p-0">
-          <div className="divide-y divide-border">
-            {mockAutomations.map((auto) => (
-              <div key={auto.id} className="p-4 hover:bg-bg-elevated transition-colors">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-medium text-text-primary">{auto.name}</h3>
-                      <Badge variant={auto.status === "active" ? "success" : "neutral"}>
-                        {auto.status}
-                      </Badge>
+          {schedules.length === 0 ? (
+            <div className="p-8 text-center">
+              <Bot className="h-12 w-12 text-text-muted mx-auto mb-3" />
+              <p className="text-text-secondary font-medium">No automations yet</p>
+              <p className="text-sm text-text-muted mt-1">Create your first automation to get started.</p>
+              <Button variant="accent" className="mt-4" onClick={() => setShowCreateAutomation(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Automation
+              </Button>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {schedules
+                .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                .map((schedule) => {
+                  const isExecuting = executingAgents.has(schedule.agentType);
+                  return (
+                    <div key={schedule.id} className="p-4 hover:bg-bg-elevated transition-colors">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-medium text-text-primary">{schedule.name}</h3>
+                            <Badge variant={schedule.enabled ? "success" : "neutral"}>
+                              {schedule.enabled ? "active" : "paused"}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-text-muted capitalize">
+                            {schedule.frequency} - {schedule.agentType.replace(/_/g, " ")}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="accent"
+                            size="sm"
+                            disabled={isExecuting}
+                            onClick={() => {
+                              const agentDef = agentDefinitions.find(a => a.agentType === schedule.agentType);
+                              if (agentDef) handleExecuteAgent(agentDef);
+                            }}
+                          >
+                            {isExecuting ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Play className="h-4 w-4" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleSchedule(schedule.id)}
+                          >
+                            {schedule.enabled ? (
+                              <Pause className="h-4 w-4" />
+                            ) : (
+                              <Play className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-6 text-sm">
+                        <div className="flex items-center gap-2">
+                          <Bot className="h-4 w-4 text-text-muted" />
+                          <span className="text-text-secondary capitalize">{schedule.agentType.replace(/_/g, " ")}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-text-muted" />
+                          <span className="text-text-muted">
+                            Last: {schedule.lastRunAt ? new Date(schedule.lastRunAt).toLocaleString() : "Never"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-text-muted" />
+                          <span className="text-text-muted">
+                            Next: {schedule.enabled && schedule.nextRunAt ? new Date(schedule.nextRunAt).toLocaleString() : "N/A"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Activity className="h-4 w-4 text-text-muted" />
+                          <span className="text-text-muted">{schedule.runCount} runs</span>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-sm text-text-muted">{auto.trigger}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="sm">
-                      <Play className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm">
-                      <Settings className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-6 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Bot className="h-4 w-4 text-text-muted" />
-                    <span className="text-text-secondary">{auto.agent}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-text-muted" />
-                    <span className="text-text-muted">Last: {auto.lastRun}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-text-muted" />
-                    <span className="text-text-muted">Next: {auto.nextRun}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-text-muted" />
-                    <span className="text-text-muted">{auto.runsCompleted} runs</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                  );
+                })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </>
@@ -601,29 +768,56 @@ export default function AgentsPage() {
 
       <Card>
         <CardContent className="p-0">
-          <div className="divide-y divide-border">
-            {mockActivityLogs.map((log) => (
-              <div key={log.id} className="p-4 hover:bg-bg-elevated transition-colors">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {log.status === "success" ? (
-                      <CheckCircle className="h-5 w-5 text-success" />
-                    ) : (
-                      <AlertCircle className="h-5 w-5 text-warning" />
-                    )}
-                    <div>
-                      <p className="font-medium text-text-primary">{log.action}</p>
-                      <p className="text-sm text-text-muted">{log.agent}</p>
+          {runs.length === 0 ? (
+            <div className="p-8 text-center">
+              <History className="h-12 w-12 text-text-muted mx-auto mb-3" />
+              <p className="text-text-secondary font-medium">No activity logs</p>
+              <p className="text-sm text-text-muted mt-1">Execute an agent to see logs here.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {runs.map((run) => (
+                <div
+                  key={run.id}
+                  className="p-4 hover:bg-bg-elevated transition-colors cursor-pointer"
+                  onClick={() => {
+                    setSelectedRun(run);
+                    setShowRunResult(true);
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {run.status === "completed" ? (
+                        <CheckCircle className="h-5 w-5 text-success" />
+                      ) : run.status === "failed" ? (
+                        <AlertCircle className="h-5 w-5 text-error" />
+                      ) : run.status === "running" ? (
+                        <Loader2 className="h-5 w-5 text-accent animate-spin" />
+                      ) : (
+                        <Clock className="h-5 w-5 text-text-muted" />
+                      )}
+                      <div>
+                        <p className="font-medium text-text-primary capitalize">
+                          {run.agentType.replace(/_/g, " ")}
+                        </p>
+                        <p className="text-sm text-text-muted">
+                          {run.logs.length > 0 ? run.logs[run.logs.length - 1] : "No logs"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-text-secondary">
+                        {new Date(run.startedAt).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        Duration: {run.duration ? `${(run.duration / 1000).toFixed(1)}s` : "N/A"}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm text-text-secondary">{log.time}</p>
-                    <p className="text-xs text-text-muted">Duration: {log.duration}</p>
-                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </>
@@ -661,7 +855,7 @@ export default function AgentsPage() {
                   <div>
                     <p className="font-medium text-text-primary">Current Usage</p>
                     <p className="text-sm text-text-muted mt-1">
-                      12,450 / 30,000 requests this month (Groq Free Tier)
+                      {runs.length} agent executions this session
                     </p>
                   </div>
                 </div>
@@ -764,8 +958,12 @@ export default function AgentsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary">
-            <RefreshCw className="h-4 w-4 mr-2" />
+          <Button
+            variant="secondary"
+            onClick={handleRefresh}
+            disabled={isLoading}
+          >
+            <RefreshCw className={cn("h-4 w-4 mr-2", isLoading && "animate-spin")} />
             Refresh Status
           </Button>
           <Button variant="accent" onClick={() => setShowCreateAutomation(true)}>
@@ -802,53 +1000,214 @@ export default function AgentsPage() {
         title={selectedAgent?.name || "Agent Details"}
         size="lg"
       >
-        {selectedAgent && (
-          <div className="space-y-6">
-            <p className="text-text-secondary">{selectedAgent.description}</p>
-            
-            <div className="grid grid-cols-4 gap-4">
-              <div className="p-3 rounded-lg bg-bg-elevated">
-                <p className="text-xs text-text-muted">Status</p>
-                <Badge variant={selectedAgent.status === "active" ? "success" : "warning"} className="mt-1">
-                  {selectedAgent.status}
+        {selectedAgent && (() => {
+          const schedule = getScheduleForAgent(selectedAgent.agentType);
+          const isActive = schedule?.enabled ?? false;
+          const isExecuting = executingAgents.has(selectedAgent.agentType);
+          const agentRuns = runs.filter(r => r.agentType === selectedAgent.agentType);
+
+          return (
+            <div className="space-y-6">
+              <p className="text-text-secondary">{selectedAgent.description}</p>
+
+              <div className="grid grid-cols-4 gap-4">
+                <div className="p-3 rounded-lg bg-bg-elevated">
+                  <p className="text-xs text-text-muted">Status</p>
+                  <Badge variant={isActive ? "success" : "warning"} className="mt-1">
+                    {isActive ? "active" : "paused"}
+                  </Badge>
+                </div>
+                <div className="p-3 rounded-lg bg-bg-elevated">
+                  <p className="text-xs text-text-muted">Total Runs</p>
+                  <p className="text-xl font-bold">{schedule?.runCount ?? 0}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-bg-elevated">
+                  <p className="text-xs text-text-muted">Success Rate</p>
+                  <p className="text-xl font-bold text-success">
+                    {schedule && schedule.runCount > 0
+                      ? `${(((schedule.runCount - schedule.failureCount) / schedule.runCount) * 100).toFixed(0)}%`
+                      : "--"}
+                  </p>
+                </div>
+                <div className="p-3 rounded-lg bg-bg-elevated">
+                  <p className="text-xs text-text-muted">Frequency</p>
+                  <p className="text-xl font-bold capitalize">{schedule?.frequency ?? "N/A"}</p>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg bg-bg-elevated">
+                <p className="text-sm text-text-muted mb-1">Last Run</p>
+                <p className="font-medium">
+                  {schedule?.lastRunAt
+                    ? new Date(schedule.lastRunAt).toLocaleString()
+                    : "Never executed"}
+                </p>
+              </div>
+
+              {/* Recent runs for this agent */}
+              {agentRuns.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-text-primary mb-2">Recent Runs</p>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {agentRuns.slice(0, 5).map((run) => (
+                      <div
+                        key={run.id}
+                        className="flex items-center justify-between p-2 rounded border border-border cursor-pointer hover:bg-bg-elevated"
+                        onClick={() => {
+                          setSelectedRun(run);
+                          setShowRunResult(true);
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          {run.status === "completed" ? (
+                            <CheckCircle className="h-4 w-4 text-success" />
+                          ) : run.status === "failed" ? (
+                            <AlertCircle className="h-4 w-4 text-error" />
+                          ) : (
+                            <Clock className="h-4 w-4 text-text-muted" />
+                          )}
+                          <span className="text-sm">{new Date(run.startedAt).toLocaleString()}</span>
+                        </div>
+                        <Badge
+                          variant={
+                            run.status === "completed" ? "success" :
+                            run.status === "failed" ? "error" :
+                            "neutral"
+                          }
+                        >
+                          {run.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <ModalFooter>
+                <Button variant="secondary" onClick={() => setShowAgentDetail(false)}>Close</Button>
+                {schedule && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      handleToggleAgent(selectedAgent);
+                    }}
+                  >
+                    {isActive ? (
+                      <>
+                        <Pause className="h-4 w-4 mr-2" />
+                        Pause
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4 w-4 mr-2" />
+                        Enable
+                      </>
+                    )}
+                  </Button>
+                )}
+                <Button
+                  variant="accent"
+                  disabled={isExecuting}
+                  onClick={() => handleExecuteAgent(selectedAgent)}
+                >
+                  {isExecuting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4 mr-2" />
+                  )}
+                  {isExecuting ? "Running..." : "Run Now"}
+                </Button>
+              </ModalFooter>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* Run Result Modal */}
+      <Modal
+        isOpen={showRunResult}
+        onClose={() => {
+          setShowRunResult(false);
+          setSelectedRun(null);
+        }}
+        title={selectedRun ? `${selectedRun.agentType.replace(/_/g, " ")} - Execution Result` : "Execution Result"}
+        size="lg"
+      >
+        {selectedRun && (
+          <div className="space-y-4">
+            {/* Status Banner */}
+            <div className={cn(
+              "p-3 rounded-lg flex items-center gap-3",
+              selectedRun.status === "completed" ? "bg-success-bg" :
+              selectedRun.status === "failed" ? "bg-error-bg" :
+              "bg-bg-elevated"
+            )}>
+              {selectedRun.status === "completed" ? (
+                <CheckCircle className="h-5 w-5 text-success" />
+              ) : selectedRun.status === "failed" ? (
+                <AlertCircle className="h-5 w-5 text-error" />
+              ) : (
+                <Loader2 className="h-5 w-5 text-accent animate-spin" />
+              )}
+              <div>
+                <p className="font-medium capitalize">
+                  {selectedRun.status === "completed" ? "Analysis Complete" :
+                   selectedRun.status === "failed" ? "Execution Failed" :
+                   "Running..."}
+                </p>
+                <p className="text-xs text-text-muted">
+                  Duration: {selectedRun.duration ? `${(selectedRun.duration / 1000).toFixed(1)}s` : "In progress"}
+                </p>
+              </div>
+            </div>
+
+            {/* LLM/Error indicator */}
+            {selectedRun.result && (
+              <div className="flex items-center gap-2">
+                <Badge variant={
+                  (selectedRun.result as Record<string, unknown>).usedLLM ? "accent" : "warning"
+                }>
+                  {(selectedRun.result as Record<string, unknown>).usedLLM ? "LLM Analysis" : "Fallback Mode"}
+                </Badge>
+                <Badge variant="info">
+                  {String((selectedRun.result as Record<string, unknown>).action || selectedRun.agentType)}
                 </Badge>
               </div>
-              <div className="p-3 rounded-lg bg-bg-elevated">
-                <p className="text-xs text-text-muted">Tasks Completed</p>
-                <p className="text-xl font-bold">{formatNumber(selectedAgent.tasksCompleted)}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-bg-elevated">
-                <p className="text-xs text-text-muted">Success Rate</p>
-                <p className="text-xl font-bold text-success">{selectedAgent.successRate}%</p>
-              </div>
-              <div className="p-3 rounded-lg bg-bg-elevated">
-                <p className="text-xs text-text-muted">Avg. Response</p>
-                <p className="text-xl font-bold">{selectedAgent.avgResponseTime}s</p>
+            )}
+
+            {/* Result content */}
+            <div className="max-h-[400px] overflow-y-auto">
+              <div className="p-4 rounded-lg bg-bg-elevated">
+                <pre className="text-sm text-text-primary whitespace-pre-wrap break-words font-sans leading-relaxed">
+                  {formatRunResult(selectedRun)}
+                </pre>
               </div>
             </div>
 
-            <div className="p-4 rounded-lg bg-bg-elevated">
-              <p className="text-sm text-text-muted mb-1">Last Run</p>
-              <p className="font-medium">{selectedAgent.lastRun}</p>
-            </div>
+            {/* Execution logs */}
+            {selectedRun.logs.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-text-primary mb-2">Execution Logs</p>
+                <div className="p-3 rounded-lg bg-bg-elevated max-h-32 overflow-y-auto">
+                  {selectedRun.logs.map((log, i) => (
+                    <p key={i} className="text-xs text-text-muted font-mono">{log}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Error details */}
+            {selectedRun.error && (
+              <div className="p-3 rounded-lg bg-error-bg">
+                <p className="text-sm font-medium text-error mb-1">Error</p>
+                <p className="text-sm text-text-primary">{selectedRun.error}</p>
+              </div>
+            )}
 
             <ModalFooter>
-              <Button variant="secondary" onClick={() => setShowAgentDetail(false)}>Close</Button>
-              <Button variant="ghost">
-                <Settings className="h-4 w-4 mr-2" />
-                Configure
+              <Button variant="secondary" onClick={() => { setShowRunResult(false); setSelectedRun(null); }}>
+                Close
               </Button>
-              {selectedAgent.status === "active" ? (
-                <Button variant="accent">
-                  <Pause className="h-4 w-4 mr-2" />
-                  Pause Agent
-                </Button>
-              ) : (
-                <Button variant="accent">
-                  <Play className="h-4 w-4 mr-2" />
-                  Start Agent
-                </Button>
-              )}
             </ModalFooter>
           </div>
         )}
@@ -864,31 +1223,44 @@ export default function AgentsPage() {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-text-primary mb-2">Automation Name</label>
-            <Input placeholder="e.g., Daily Rank Check" />
+            <Input
+              placeholder="e.g., Daily Rank Check"
+              value={newAutoName}
+              onChange={(e) => setNewAutoName(e.target.value)}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-text-primary mb-2">Select Agent</label>
-            <select className="w-full h-10 px-3 rounded-md border border-border bg-bg-card text-text-primary">
-              {mockAgents.map((agent) => (
-                <option key={agent.id} value={agent.id}>{agent.name}</option>
+            <select
+              className="w-full h-10 px-3 rounded-md border border-border bg-bg-card text-text-primary"
+              value={newAutoAgent}
+              onChange={(e) => setNewAutoAgent(e.target.value as AgentType)}
+            >
+              {agentDefinitions.map((agent) => (
+                <option key={agent.id} value={agent.agentType}>{agent.name}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">Trigger Type</label>
-            <select className="w-full h-10 px-3 rounded-md border border-border bg-bg-card text-text-primary">
-              <option>Schedule (Cron)</option>
-              <option>Event-based</option>
-              <option>Manual</option>
+            <label className="block text-sm font-medium text-text-primary mb-2">Frequency</label>
+            <select
+              className="w-full h-10 px-3 rounded-md border border-border bg-bg-card text-text-primary"
+              value={newAutoFrequency}
+              onChange={(e) => setNewAutoFrequency(e.target.value)}
+            >
+              <option value="hourly">Hourly</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
             </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">Schedule</label>
-            <Input placeholder="e.g., Every day at 6 AM" />
           </div>
           <ModalFooter>
             <Button variant="secondary" onClick={() => setShowCreateAutomation(false)}>Cancel</Button>
-            <Button variant="accent">
+            <Button
+              variant="accent"
+              disabled={!newAutoName.trim()}
+              onClick={handleCreateAutomation}
+            >
               <Plus className="h-4 w-4 mr-2" />
               Create Automation
             </Button>
@@ -908,8 +1280,10 @@ export default function AgentsPage() {
             Enable or disable agents and configure their behavior.
           </p>
           <div className="space-y-3">
-            {mockAgents.map((agent) => {
+            {agentDefinitions.map((agent) => {
               const Icon = agent.icon;
+              const schedule = getScheduleForAgent(agent.agentType);
+              const isActive = schedule?.enabled ?? false;
               return (
                 <div key={agent.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
                   <div className="flex items-center gap-3">
@@ -926,7 +1300,8 @@ export default function AgentsPage() {
                   </div>
                   <input
                     type="checkbox"
-                    defaultChecked={agent.status === "active"}
+                    checked={isActive}
+                    onChange={() => handleToggleAgent(agent)}
                     className="rounded border-border"
                   />
                 </div>
@@ -934,8 +1309,7 @@ export default function AgentsPage() {
             })}
           </div>
           <ModalFooter>
-            <Button variant="secondary" onClick={() => setShowAgentConfig(false)}>Cancel</Button>
-            <Button variant="accent">Save Configuration</Button>
+            <Button variant="secondary" onClick={() => setShowAgentConfig(false)}>Close</Button>
           </ModalFooter>
         </div>
       </Modal>

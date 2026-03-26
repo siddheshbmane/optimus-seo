@@ -60,7 +60,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { SlidePanel } from "@/components/ui/slide-panel";
-import { getProjectById } from "@/data/mock-projects";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
+import { useProjectContext } from "@/contexts/project-context";
+import { useSEOAnalysis } from "@/hooks/use-llm";
 import { formatNumber, cn } from "@/lib/utils";
 import {
   AreaChart,
@@ -464,7 +466,7 @@ const tabs = [
 export default function SocialIntelligencePage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
 
   const [activeTab, setActiveTab] = React.useState("overview");
   const [showReplyModal, setShowReplyModal] = React.useState(false);
@@ -476,6 +478,30 @@ export default function SocialIntelligencePage() {
   const [mentionFilter, setMentionFilter] = React.useState<string>("all");
   const [reviewFilter, setReviewFilter] = React.useState<string>("all");
   const [showMentionDetail, setShowMentionDetail] = React.useState(false);
+  const [isSyncing, setIsSyncing] = React.useState(false);
+
+  // LLM hook for AI replies
+  const { analyze, isLoading: llmLoading } = useSEOAnalysis();
+
+  const handleSyncAll = React.useCallback(async () => {
+    setIsSyncing(true);
+    // Simulate sync delay since no dedicated data hook exists
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    setIsSyncing(false);
+  }, []);
+
+  const handleGenerateAIReply = React.useCallback(async (content: string, sentiment: string) => {
+    try {
+      const result = await analyze('generateContent', {
+        topic: `Generate a professional reply to this ${sentiment} ${content.length > 100 ? 'review' : 'social mention'}: "${content.slice(0, 300)}"`,
+        keywords: ['brand reputation', 'customer service'],
+        contentType: 'meta' as const,
+      });
+      setReplyText(result);
+    } catch {
+      // Error handled by hook
+    }
+  }, [analyze]);
 
   if (!project) return null;
 
@@ -504,8 +530,34 @@ export default function SocialIntelligencePage() {
     setShowReplyModal(true);
   };
 
-  const filteredMentions = mentionFilter === "all" 
-    ? socialMentions 
+  const handleExportMentions = () => {
+    const data = socialMentions.map((m) => ({
+      platform: m.platform,
+      author: m.author,
+      handle: m.handle,
+      content: `"${m.content.replace(/"/g, '""')}"`,
+      sentiment: m.sentiment,
+      likes: m.engagement.likes,
+      shares: m.engagement.shares,
+      comments: m.engagement.comments,
+      reach: m.reach,
+      responded: m.responded ? "Yes" : "No",
+      timestamp: m.timestamp,
+    }));
+    if (data.length === 0) return;
+    const headers = Object.keys(data[0]).join(",");
+    const csv = data.map((row) => Object.values(row).join(",")).join("\n");
+    const blob = new Blob([headers + "\n" + csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `social-mentions-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const filteredMentions = mentionFilter === "all"
+    ? socialMentions
     : socialMentions.filter(m => m.sentiment === mentionFilter);
 
   const filteredReviews = reviewFilter === "all"
@@ -529,7 +581,15 @@ export default function SocialIntelligencePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Social & Review Intelligence</h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-text-primary">Social & Review Intelligence</h1>
+            <DataSourceIndicator
+              source="mock"
+              isLoading={isSyncing}
+              onRefresh={handleSyncAll}
+              compact
+            />
+          </div>
           <p className="text-text-secondary">
             Monitor brand mentions, reviews, and social sentiment across all platforms
           </p>
@@ -539,9 +599,9 @@ export default function SocialIntelligencePage() {
             <Plus className="h-4 w-4 mr-2" />
             Connect Platform
           </Button>
-          <Button variant="accent">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Sync All
+          <Button variant="accent" onClick={handleSyncAll} disabled={isSyncing}>
+            <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
+            {isSyncing ? "Syncing..." : "Sync All"}
           </Button>
         </div>
       </div>
@@ -901,7 +961,7 @@ export default function SocialIntelligencePage() {
             </div>
             <div className="flex items-center gap-2">
               <Input placeholder="Search mentions..." className="w-64" />
-              <Button variant="secondary">
+              <Button variant="secondary" onClick={handleExportMentions}>
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
@@ -1048,9 +1108,18 @@ export default function SocialIntelligencePage() {
                 </Button>
               ))}
             </div>
-            <Button variant="accent">
+            <Button
+              variant="accent"
+              disabled={llmLoading}
+              onClick={() => {
+                const needsReply = recentReviews.find(r => !r.responded);
+                if (needsReply) {
+                  handleGenerateAIReply(needsReply.content, needsReply.sentiment);
+                }
+              }}
+            >
               <Sparkles className="h-4 w-4 mr-2" />
-              Generate AI Replies
+              {llmLoading ? "Generating..." : "Generate AI Replies"}
             </Button>
           </div>
 
@@ -1502,14 +1571,29 @@ export default function SocialIntelligencePage() {
 
           {/* AI Suggestion */}
           <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="h-4 w-4 text-accent" />
-              <span className="font-medium text-accent">AI Suggested Reply</span>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-accent" />
+                <span className="font-medium text-accent">AI Suggested Reply</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={llmLoading}
+                onClick={() => {
+                  const content = selectedMention?.content || selectedReview?.content || '';
+                  const sentiment = selectedMention?.sentiment || selectedReview?.sentiment || 'neutral';
+                  handleGenerateAIReply(content, sentiment);
+                }}
+              >
+                <Sparkles className="h-3.5 w-3.5 mr-1" />
+                {llmLoading ? "Generating..." : "Regenerate"}
+              </Button>
             </div>
             <p className="text-sm text-text-secondary">
-              {selectedMention?.sentiment === "negative" || (selectedReview && selectedReview.rating <= 3)
+              {replyText || (selectedMention?.sentiment === "negative" || (selectedReview && selectedReview.rating <= 3)
                 ? "Thank you for your feedback. We're sorry to hear about your experience and would like to make things right. Please reach out to our support team at support@acmecorp.com so we can address your concerns directly."
-                : "Thank you so much for your kind words! We're thrilled to hear about your positive experience. Your support means a lot to our team, and we look forward to continuing to deliver great results for you!"}
+                : "Thank you so much for your kind words! We're thrilled to hear about your positive experience. Your support means a lot to our team, and we look forward to continuing to deliver great results for you!")}
             </p>
             <Button variant="ghost" size="sm" className="mt-2" onClick={() => setReplyText(
               selectedMention?.sentiment === "negative" || (selectedReview && selectedReview.rating <= 3)

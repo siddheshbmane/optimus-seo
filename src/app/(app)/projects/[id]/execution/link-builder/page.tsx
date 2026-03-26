@@ -16,13 +16,17 @@ import {
   RefreshCw,
   Eye,
   ExternalLink,
+  Search,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
-import { getProjectById } from "@/data/mock-projects";
-import { cn } from "@/lib/utils";
+import { useProjectContext } from "@/contexts/project-context";
+import { useBacklinksSummary, useBacklinks } from "@/hooks/use-seo-data";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
+import { formatNumber, cn } from "@/lib/utils";
 
 const outreachCampaigns = [
   {
@@ -60,45 +64,6 @@ const outreachCampaigns = [
   },
 ];
 
-const recentLinks = [
-  {
-    id: 1,
-    domain: "techcrunch.com",
-    dr: 94,
-    page: "/guest-post/seo-trends-2026",
-    anchor: "SEO trends",
-    type: "Guest Post",
-    acquiredAt: "2 hours ago",
-  },
-  {
-    id: 2,
-    domain: "forbes.com",
-    dr: 95,
-    page: "/business/digital-marketing-guide",
-    anchor: "digital marketing experts",
-    type: "Editorial",
-    acquiredAt: "1 day ago",
-  },
-  {
-    id: 3,
-    domain: "searchenginejournal.com",
-    dr: 89,
-    page: "/resources/seo-tools",
-    anchor: "Acme Corp",
-    type: "Resource",
-    acquiredAt: "2 days ago",
-  },
-  {
-    id: 4,
-    domain: "hubspot.com",
-    dr: 93,
-    page: "/marketing/seo-statistics",
-    anchor: "according to research",
-    type: "Citation",
-    acquiredAt: "3 days ago",
-  },
-];
-
 const pendingOutreach = [
   {
     id: 1,
@@ -129,6 +94,50 @@ const pendingOutreach = [
   },
 ];
 
+// Mock competitor gap opportunities (user-managed, not from API)
+const competitorGapOpportunities = [
+  {
+    id: 1,
+    domain: "neilpatel.com",
+    dr: 91,
+    linksToCompetitors: 5,
+    relevance: "high" as const,
+    topic: "SEO Strategy",
+  },
+  {
+    id: 2,
+    domain: "backlinko.com",
+    dr: 89,
+    linksToCompetitors: 3,
+    relevance: "high" as const,
+    topic: "Link Building",
+  },
+  {
+    id: 3,
+    domain: "searchengineland.com",
+    dr: 88,
+    linksToCompetitors: 4,
+    relevance: "medium" as const,
+    topic: "Technical SEO",
+  },
+  {
+    id: 4,
+    domain: "contentmarketinginstitute.com",
+    dr: 85,
+    linksToCompetitors: 2,
+    relevance: "medium" as const,
+    topic: "Content Marketing",
+  },
+  {
+    id: 5,
+    domain: "copyblogger.com",
+    dr: 82,
+    linksToCompetitors: 3,
+    relevance: "low" as const,
+    topic: "Copywriting",
+  },
+];
+
 const statusConfig = {
   sent: { label: "Sent", variant: "neutral" as const, icon: Send },
   opened: { label: "Opened", variant: "info" as const, icon: Eye },
@@ -137,69 +146,209 @@ const statusConfig = {
   rejected: { label: "Rejected", variant: "error" as const, icon: XCircle },
 };
 
+const relevanceConfig = {
+  high: { label: "High", variant: "success" as const },
+  medium: { label: "Medium", variant: "warning" as const },
+  low: { label: "Low", variant: "neutral" as const },
+};
+
 export default function LinkBuilderPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
+
+  // Fetch real backlink data from DataForSEO API
+  const {
+    data: backlinksSummary,
+    isLoading: summaryLoading,
+    source: summarySource,
+    refetch: refetchSummary,
+  } = useBacklinksSummary(project?.url || "");
+
+  const {
+    data: backlinks,
+    isLoading: backlinksLoading,
+    source: backlinksSource,
+    refetch: refetchBacklinks,
+  } = useBacklinks(project?.url || "", 20);
+
+  const isLoading = summaryLoading || backlinksLoading;
+  const source = summarySource || backlinksSource;
+
+  const handleRefresh = React.useCallback(() => {
+    refetchSummary();
+    refetchBacklinks();
+  }, [refetchSummary, refetchBacklinks]);
 
   if (!project) return null;
 
+  // Outreach stats (user-managed campaigns, kept as mock)
   const totalSent = outreachCampaigns.reduce((sum, c) => sum + c.sent, 0);
   const totalAcquired = outreachCampaigns.reduce((sum, c) => sum + c.acquired, 0);
-  const avgDR = Math.round(recentLinks.reduce((sum, l) => sum + l.dr, 0) / recentLinks.length);
+
+  // Real stats from API
+  const totalBacklinks = backlinksSummary?.totalBacklinks ?? 0;
+  const referringDomains = backlinksSummary?.referringDomains ?? 0;
+  const newBacklinks30d = backlinksSummary?.newBacklinks30d ?? 0;
+  const domainRating = backlinksSummary?.domainRating ?? 0;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Link Builder</h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-text-primary">Link Builder</h1>
+            <DataSourceIndicator
+              source={source}
+              isLoading={isLoading}
+              onRefresh={handleRefresh}
+              compact
+            />
+          </div>
           <p className="text-text-secondary">
             Automated outreach and link acquisition
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Sync
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+          >
+            <RefreshCw className={cn("h-4 w-4 mr-2", isLoading && "animate-spin")} />
+            Refresh
           </Button>
-          <Button variant="accent">
+          <Button variant="accent" size="sm">
             <Plus className="h-4 w-4 mr-2" />
             New Campaign
           </Button>
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats - Wired to real backlink data */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label="Links Acquired"
-          value={totalAcquired}
-          trend={25}
-          trendLabel="this month"
+          label="Total Backlinks"
+          value={summaryLoading ? "..." : formatNumber(totalBacklinks)}
+          trendLabel="from API"
           icon={<Link2 className="h-5 w-5" />}
           variant="accent"
         />
         <StatCard
-          label="Emails Sent"
-          value={totalSent}
-          trendLabel="total outreach"
-          icon={<Send className="h-5 w-5" />}
+          label="Referring Domains"
+          value={summaryLoading ? "..." : formatNumber(referringDomains)}
+          trendLabel="unique domains"
+          icon={<Globe className="h-5 w-5" />}
         />
         <StatCard
-          label="Avg. DR"
-          value={avgDR}
-          trendLabel="of acquired links"
+          label="New Backlinks (30d)"
+          value={summaryLoading ? "..." : formatNumber(newBacklinks30d)}
+          trend={newBacklinks30d > 0 ? 12 : 0}
+          trendLabel="this month"
           icon={<TrendingUp className="h-5 w-5" />}
         />
         <StatCard
-          label="Response Rate"
-          value="24%"
-          trend={5}
-          trendLabel="vs last month"
-          icon={<Mail className="h-5 w-5" />}
+          label="Outreach Sent"
+          value={totalSent}
+          trendLabel={`${totalAcquired} acquired`}
+          icon={<Send className="h-5 w-5" />}
         />
       </div>
+
+      {/* Referring Domains / Link Opportunities from API */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Link Opportunities</CardTitle>
+            <p className="text-sm text-text-muted mt-1">
+              Referring domains linking to your site — ranked by domain rating
+            </p>
+          </div>
+          <DataSourceIndicator
+            source={backlinksSource}
+            isLoading={backlinksLoading}
+            onRefresh={refetchBacklinks}
+            compact
+          />
+        </CardHeader>
+        <CardContent>
+          {backlinksLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-text-muted" />
+              <span className="ml-2 text-text-muted">Loading backlink data...</span>
+            </div>
+          ) : backlinks && backlinks.length > 0 ? (
+            <div className="space-y-3">
+              {backlinks.map((link, index) => (
+                <div
+                  key={link.id || index}
+                  className="flex items-center justify-between p-3 rounded-lg bg-bg-elevated"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                      <Globe className="h-5 w-5 text-accent" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-text-primary">
+                          {link.sourceDomain}
+                        </p>
+                        <Badge variant="accent">DR {link.domainRating}</Badge>
+                        {link.isDoFollow ? (
+                          <Badge variant="success">dofollow</Badge>
+                        ) : (
+                          <Badge variant="neutral">nofollow</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-text-muted">
+                        Anchor: &quot;{link.anchorText}&quot;
+                        {link.targetUrl && (
+                          <span className="ml-2">
+                            &rarr; {link.targetUrl}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right flex items-center gap-2">
+                    <div>
+                      <p className="text-xs text-text-muted">
+                        First seen: {link.firstSeen}
+                      </p>
+                    </div>
+                    <a
+                      href={`https://${link.sourceUrl}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded hover:bg-bg-card text-text-muted hover:text-text-primary transition-colors"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="p-4 rounded-full bg-bg-elevated mb-4">
+                <Link2 className="h-8 w-8 text-text-muted" />
+              </div>
+              <h3 className="text-lg font-medium text-text-primary mb-2">
+                No backlink data yet
+              </h3>
+              <p className="text-text-muted max-w-md mb-4">
+                Backlink data will appear here once we fetch it from the API.
+              </p>
+              <Button variant="accent" size="sm" onClick={refetchBacklinks}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Fetch Backlinks
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Campaigns */}
       <Card>
@@ -219,7 +368,7 @@ export default function LinkBuilderPage() {
                         {campaign.status}
                       </Badge>
                     </div>
-                    <p className="text-sm text-text-muted">{campaign.type} • Started {campaign.startedAt}</p>
+                    <p className="text-sm text-text-muted">{campaign.type} &bull; Started {campaign.startedAt}</p>
                   </div>
                   <Button variant="secondary" size="sm">
                     {campaign.status === "active" ? "Pause" : "Resume"}
@@ -249,38 +398,56 @@ export default function LinkBuilderPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Links */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recently Acquired Links</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {recentLinks.map((link) => (
-                <div key={link.id} className="flex items-center justify-between p-3 rounded-lg bg-bg-elevated">
+      {/* Find Opportunities (mock competitor gap data) */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Search className="h-5 w-5" />
+              Find Opportunities
+            </CardTitle>
+            <p className="text-sm text-text-muted mt-1">
+              Domains linking to competitors but not to you — mock data, competitor analysis coming soon
+            </p>
+          </div>
+          <Badge variant="warning">Demo Data</Badge>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {competitorGapOpportunities.map((opp) => {
+              const relevance = relevanceConfig[opp.relevance];
+              return (
+                <div
+                  key={opp.id}
+                  className="flex items-center justify-between p-3 rounded-lg bg-bg-elevated"
+                >
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center">
-                      <Globe className="h-5 w-5 text-success" />
+                    <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center">
+                      <Target className="h-5 w-5 text-warning" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-text-primary">{link.domain}</p>
-                        <Badge variant="accent">DR {link.dr}</Badge>
+                        <p className="font-medium text-text-primary">{opp.domain}</p>
+                        <Badge variant="accent">DR {opp.dr}</Badge>
+                        <Badge variant={relevance.variant}>{relevance.label}</Badge>
                       </div>
-                      <p className="text-xs text-text-muted">Anchor: &quot;{link.anchor}&quot;</p>
+                      <p className="text-xs text-text-muted">
+                        {opp.topic} &bull; Links to {opp.linksToCompetitors} competitor{opp.linksToCompetitors !== 1 ? "s" : ""}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <Badge variant="neutral">{link.type}</Badge>
-                    <p className="text-xs text-text-muted mt-1">{link.acquiredAt}</p>
-                  </div>
+                  <Button variant="secondary" size="sm">
+                    <Mail className="h-4 w-4 mr-1" />
+                    Outreach
+                  </Button>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pending Outreach */}
         <Card>
           <CardHeader>
@@ -323,6 +490,59 @@ export default function LinkBuilderPage() {
                 );
               })}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Backlink Profile Summary */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Backlink Profile</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {summaryLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-text-muted" />
+              </div>
+            ) : backlinksSummary ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-lg bg-bg-elevated">
+                    <p className="text-sm text-text-muted">Domain Rating</p>
+                    <p className="text-2xl font-bold text-text-primary">{domainRating}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-bg-elevated">
+                    <p className="text-sm text-text-muted">Referring Domains</p>
+                    <p className="text-2xl font-bold text-text-primary">{formatNumber(referringDomains)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-bg-elevated">
+                    <p className="text-sm text-text-muted">DoFollow</p>
+                    <p className="text-2xl font-bold text-success">{formatNumber(backlinksSummary.doFollowLinks)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-bg-elevated">
+                    <p className="text-sm text-text-muted">NoFollow</p>
+                    <p className="text-2xl font-bold text-text-muted">{formatNumber(backlinksSummary.noFollowLinks)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-success" />
+                    <span className="text-sm text-text-primary">New (30d)</span>
+                  </div>
+                  <span className="font-semibold text-success">+{formatNumber(backlinksSummary.newBacklinks30d)}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border">
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-error" />
+                    <span className="text-sm text-text-primary">Lost (30d)</span>
+                  </div>
+                  <span className="font-semibold text-error">-{formatNumber(backlinksSummary.lostBacklinks30d)}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <p className="text-text-muted">No backlink profile data available</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

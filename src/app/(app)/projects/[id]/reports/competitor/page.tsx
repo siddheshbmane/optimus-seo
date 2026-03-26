@@ -20,7 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
+import { useCompetitorData } from "@/hooks/use-seo-data";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
 import { formatNumber, cn } from "@/lib/utils";
 
 const competitors = [
@@ -88,16 +90,47 @@ const contentGaps = [
 export default function CompetitorReportPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
+
+  // Fetch competitor data from API (with mock fallback)
+  const { data: apiCompetitors, isLoading, source, refetch } = useCompetitorData(
+    project?.url || ''
+  );
 
   if (!project) return null;
+
+  // Use API data if available, otherwise use mock data
+  const competitorsToUse = React.useMemo(() => {
+    if (apiCompetitors && apiCompetitors.length > 0) {
+      return apiCompetitors.map((comp, index) => ({
+        id: index + 1,
+        name: comp.domain.replace(/\.[^.]+$/, '').replace(/^www\./, ''),
+        domain: comp.domain,
+        domainRating: comp.domainAuthority,
+        traffic: comp.traffic,
+        keywords: comp.keywords,
+        backlinks: comp.backlinks,
+        visibility: comp.visibility,
+        trend: comp.keywordGap > 0 ? Math.min(comp.keywordGap, 20) : -5,
+      }));
+    }
+    return competitors;
+  }, [apiCompetitors]);
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Competitor Report</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-text-primary">Competitor Report</h1>
+            <DataSourceIndicator
+              source={source}
+              isLoading={isLoading}
+              onRefresh={refetch}
+              compact
+            />
+          </div>
           <p className="text-text-secondary">
             Analyze competitor strategies and find opportunities
           </p>
@@ -118,7 +151,7 @@ export default function CompetitorReportPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Competitors Tracked"
-          value={competitors.length}
+          value={competitorsToUse.length}
           trendLabel="active competitors"
           icon={<Users className="h-5 w-5" />}
         />
@@ -185,7 +218,7 @@ export default function CompetitorReportPage() {
                   </td>
                 </tr>
                 {/* Competitors */}
-                {competitors.map((comp) => (
+                {competitorsToUse.map((comp) => (
                   <tr key={comp.id} className="border-b border-border hover:bg-bg-elevated">
                     <td className="p-4">
                       <div className="flex items-center gap-2">

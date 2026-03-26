@@ -1,6 +1,10 @@
-// AI Agent Scheduler - Cron-based agent execution
+// AI Agent Scheduler - Database-backed agent execution
+// Schedules stored in OrgSetting JSON, runs stored in AgentTask model
 
-export type AgentType = 
+import { prisma } from '@/lib/db';
+import type { Prisma, AgentStatus } from '@/generated/prisma';
+
+export type AgentType =
   | 'keyword_research'
   | 'rank_tracker'
   | 'backlink_monitor'
@@ -9,7 +13,7 @@ export type AgentType =
   | 'content_optimizer'
   | 'report_generator';
 
-export type ScheduleFrequency = 
+export type ScheduleFrequency =
   | 'hourly'
   | 'daily'
   | 'weekly'
@@ -21,10 +25,10 @@ export interface AgentSchedule {
   name: string;
   agentType: AgentType;
   frequency: ScheduleFrequency;
-  cronExpression?: string; // For custom frequency
+  cronExpression?: string;
   timezone: string;
   enabled: boolean;
-  config: Record<string, unknown>; // Agent-specific configuration
+  config: Record<string, unknown>;
   projectId: string;
   organizationId: string;
   createdBy: string;
@@ -43,17 +47,14 @@ export interface AgentRun {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   startedAt: string;
   completedAt?: string;
-  duration?: number; // milliseconds
+  duration?: number;
   result?: Record<string, unknown>;
   error?: string;
   logs: string[];
 }
 
-// In-memory storage
-const schedules: Map<string, AgentSchedule> = new Map();
-const runs: Map<string, AgentRun> = new Map();
+const ORG_SCHEDULES_KEY = 'agent_schedules';
 
-// Cron expression helpers
 const frequencyToCron: Record<ScheduleFrequency, string> = {
   hourly: '0 * * * *',
   daily: '0 9 * * *',
@@ -62,11 +63,9 @@ const frequencyToCron: Record<ScheduleFrequency, string> = {
   custom: '',
 };
 
-// Calculate next run time (simplified)
 function calculateNextRun(schedule: AgentSchedule): string {
   const now = new Date();
   let next: Date;
-  
   switch (schedule.frequency) {
     case 'hourly':
       next = new Date(now.getTime() + 60 * 60 * 1000);
@@ -91,14 +90,35 @@ function calculateNextRun(schedule: AgentSchedule): string {
     default:
       next = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   }
-  
   return next.toISOString();
 }
 
+async function getSchedulesFromDB(organizationId: string): Promise<AgentSchedule[]> {
+  try {
+    const setting = await prisma.orgSetting.findUnique({
+      where: { organizationId_key: { organizationId, key: ORG_SCHEDULES_KEY } },
+    });
+    if (!setting) return [];
+    const value = setting.value as unknown;
+    if (Array.isArray(value)) return value as AgentSchedule[];
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveSchedulesToDB(organizationId: string, schedules: AgentSchedule[]): Promise<void> {
+  await prisma.orgSetting.upsert({
+    where: { organizationId_key: { organizationId, key: ORG_SCHEDULES_KEY } },
+    create: { organizationId, key: ORG_SCHEDULES_KEY, value: schedules as unknown as Prisma.JsonArray },
+    update: { value: schedules as unknown as Prisma.JsonArray },
+  });
+}
+
 // Create schedule
-export function createSchedule(
+export async function createSchedule(
   config: Omit<AgentSchedule, 'id' | 'createdAt' | 'updatedAt' | 'runCount' | 'failureCount' | 'nextRunAt'>
-): AgentSchedule {
+): Promise<AgentSchedule> {
   const schedule: AgentSchedule = {
     ...config,
     id: `schedule-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -107,268 +127,260 @@ export function createSchedule(
     updatedAt: new Date().toISOString(),
     runCount: 0,
     failureCount: 0,
+    nextRunAt: undefined,
   };
-  
   schedule.nextRunAt = calculateNextRun(schedule);
-  
-  schedules.set(schedule.id, schedule);
+
+  const existing = await getSchedulesFromDB(config.organizationId);
+  existing.push(schedule);
+  await saveSchedulesToDB(config.organizationId, existing);
   return schedule;
 }
 
 // Get schedule
-export function getSchedule(id: string): AgentSchedule | undefined {
-  return schedules.get(id);
+export async function getSchedule(id: string, organizationId: string): Promise<AgentSchedule | undefined> {
+  const all = await getSchedulesFromDB(organizationId);
+  return all.find(s => s.id === id);
 }
 
 // List schedules
-export function listSchedules(organizationId?: string, projectId?: string): AgentSchedule[] {
-  let all = Array.from(schedules.values());
-  
-  if (organizationId) {
-    all = all.filter(s => s.organizationId === organizationId);
-  }
-  
+export async function listSchedules(organizationId?: string, projectId?: string): Promise<AgentSchedule[]> {
+  if (!organizationId) return [];
+  let all = await getSchedulesFromDB(organizationId);
   if (projectId) {
     all = all.filter(s => s.projectId === projectId);
   }
-  
   return all;
 }
 
 // Update schedule
-export function updateSchedule(
+export async function updateSchedule(
   id: string,
+  organizationId: string,
   updates: Partial<Omit<AgentSchedule, 'id' | 'createdAt'>>
-): AgentSchedule | undefined {
-  const schedule = schedules.get(id);
-  if (!schedule) return undefined;
-  
-  Object.assign(schedule, updates, { updatedAt: new Date().toISOString() });
-  
-  // Recalculate next run if frequency changed
+): Promise<AgentSchedule | undefined> {
+  const all = await getSchedulesFromDB(organizationId);
+  const idx = all.findIndex(s => s.id === id);
+  if (idx === -1) return undefined;
+
+  Object.assign(all[idx], updates, { updatedAt: new Date().toISOString() });
   if (updates.frequency || updates.cronExpression) {
-    schedule.nextRunAt = calculateNextRun(schedule);
+    all[idx].nextRunAt = calculateNextRun(all[idx]);
   }
-  
-  return schedule;
+  await saveSchedulesToDB(organizationId, all);
+  return all[idx];
 }
 
 // Delete schedule
-export function deleteSchedule(id: string): boolean {
-  return schedules.delete(id);
+export async function deleteSchedule(id: string, organizationId: string): Promise<boolean> {
+  const all = await getSchedulesFromDB(organizationId);
+  const filtered = all.filter(s => s.id !== id);
+  if (filtered.length === all.length) return false;
+  await saveSchedulesToDB(organizationId, filtered);
+  return true;
 }
 
 // Toggle schedule
-export function toggleSchedule(id: string): AgentSchedule | undefined {
-  const schedule = schedules.get(id);
-  if (!schedule) return undefined;
-  
-  schedule.enabled = !schedule.enabled;
-  schedule.updatedAt = new Date().toISOString();
-  
-  if (schedule.enabled) {
-    schedule.nextRunAt = calculateNextRun(schedule);
+export async function toggleSchedule(id: string, organizationId: string): Promise<AgentSchedule | undefined> {
+  const all = await getSchedulesFromDB(organizationId);
+  const idx = all.findIndex(s => s.id === id);
+  if (idx === -1) return undefined;
+
+  all[idx].enabled = !all[idx].enabled;
+  all[idx].updatedAt = new Date().toISOString();
+  if (all[idx].enabled) {
+    all[idx].nextRunAt = calculateNextRun(all[idx]);
   }
-  
-  return schedule;
+  await saveSchedulesToDB(organizationId, all);
+  return all[idx];
 }
 
-// Create agent run
-export function createRun(scheduleId: string): AgentRun | undefined {
-  const schedule = schedules.get(scheduleId);
-  if (!schedule) return undefined;
-  
-  const run: AgentRun = {
-    id: `run-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+// Create agent run (stored in AgentTask)
+export async function createRun(scheduleId: string, organizationId: string, schedule: AgentSchedule): Promise<AgentRun> {
+  const task = await prisma.agentTask.create({
+    data: {
+      organizationId,
+      projectId: schedule.projectId || undefined,
+      agentName: schedule.agentType,
+      action: scheduleId,
+      status: 'queued',
+      input: { scheduleId, agentType: schedule.agentType, config: schedule.config } as Prisma.JsonObject,
+      output: {},
+      startedAt: new Date(),
+    },
+  });
+
+  return {
+    id: task.id,
     scheduleId,
-    agentType: schedule.agentType,
+    agentType: schedule.agentType as AgentType,
     status: 'pending',
-    startedAt: new Date().toISOString(),
+    startedAt: task.startedAt?.toISOString() ?? new Date().toISOString(),
     logs: [],
   };
-  
-  runs.set(run.id, run);
-  return run;
 }
 
 // Update run
-export function updateRun(
+export async function updateRun(
   id: string,
   updates: Partial<Omit<AgentRun, 'id' | 'scheduleId' | 'agentType' | 'startedAt'>>
-): AgentRun | undefined {
-  const run = runs.get(id);
-  if (!run) return undefined;
-  
-  Object.assign(run, updates);
-  
-  // Calculate duration if completed
-  if (updates.completedAt && !run.duration) {
-    run.duration = new Date(updates.completedAt).getTime() - new Date(run.startedAt).getTime();
-  }
-  
-  return run;
+): Promise<void> {
+  const statusMap: Record<string, string> = {
+    pending: 'queued', running: 'running', completed: 'completed', failed: 'failed', cancelled: 'cancelled',
+  };
+  await prisma.agentTask.update({
+    where: { id },
+    data: {
+      status: updates.status ? (statusMap[updates.status] as AgentStatus) : undefined,
+      output: updates.result as Prisma.JsonObject | undefined,
+      errorMessage: updates.error,
+      completedAt: updates.completedAt ? new Date(updates.completedAt) : undefined,
+      durationMs: updates.duration,
+    },
+  });
 }
 
-// Get run
-export function getRun(id: string): AgentRun | undefined {
-  return runs.get(id);
+// List runs for a schedule
+export async function listRuns(scheduleId?: string, organizationId?: string): Promise<AgentRun[]> {
+  if (!organizationId) return [];
+  const tasks = await prisma.agentTask.findMany({
+    where: {
+      organizationId,
+      ...(scheduleId ? { action: scheduleId } : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    include: { logs: { orderBy: { createdAt: 'asc' }, take: 20 } },
+  });
+
+  return tasks.map(t => {
+    const input = t.input as Record<string, unknown>;
+    return {
+      id: t.id,
+      scheduleId: (t.action as string) ?? '',
+      agentType: (t.agentName as AgentType) ?? 'site_auditor',
+      status: t.status === 'queued' ? 'pending' : t.status === 'running' ? 'running' :
+              t.status === 'completed' ? 'completed' : t.status === 'failed' ? 'failed' : 'cancelled',
+      startedAt: t.startedAt?.toISOString() ?? t.createdAt.toISOString(),
+      completedAt: t.completedAt?.toISOString(),
+      duration: t.durationMs ?? undefined,
+      result: t.output as Record<string, unknown>,
+      error: t.errorMessage ?? undefined,
+      logs: t.logs.map(l => `[${l.createdAt.toISOString()}] ${l.message}`),
+    } as AgentRun;
+  });
 }
 
-// List runs
-export function listRuns(scheduleId?: string): AgentRun[] {
-  const all = Array.from(runs.values());
-  if (scheduleId) {
-    return all.filter(r => r.scheduleId === scheduleId);
-  }
-  return all;
-}
+// Map agent types to LLM SEO actions
+const agentTypeToLLMAction: Record<AgentType, { action: string; defaultParams: Record<string, unknown> }> = {
+  site_auditor: { action: 'technicalAudit', defaultParams: { issues: ['Missing meta descriptions', 'Slow page load times', 'Broken internal links', 'Missing alt tags', 'Redirect chains'], url: 'https://example.com' } },
+  content_optimizer: { action: 'analyzeContent', defaultParams: { content: 'Analyze this website content for SEO optimization opportunities.', targetKeyword: 'SEO optimization' } },
+  keyword_research: { action: 'suggestKeywords', defaultParams: { topic: 'SEO tools and strategies', existingKeywords: ['seo tools', 'keyword research', 'backlink analysis'] } },
+  competitor_analyzer: { action: 'competitorAnalysis', defaultParams: { competitorUrl: 'https://competitor.com', competitorContent: 'Competitor website content for analysis.', targetKeyword: 'SEO platform' } },
+  report_generator: { action: 'analyze', defaultParams: { prompt: 'Generate a comprehensive SEO performance summary covering keyword rankings, traffic trends, backlink health, and technical issues.', context: 'Monthly SEO performance report' } },
+  rank_tracker: { action: 'suggestKeywords', defaultParams: { topic: 'keyword ranking monitoring and tracking', existingKeywords: ['rank tracking', 'serp monitoring', 'keyword positions'] } },
+  backlink_monitor: { action: 'analyze', defaultParams: { prompt: 'Analyze backlink profile health, identify toxic links, find new linking opportunities.', context: 'Backlink monitoring report' } },
+};
 
-// Execute agent (simulated)
-export async function executeAgent(scheduleId: string): Promise<AgentRun> {
-  const schedule = schedules.get(scheduleId);
-  if (!schedule) {
-    throw new Error('Schedule not found');
-  }
-  
-  const run = createRun(scheduleId);
-  if (!run) {
-    throw new Error('Failed to create run');
-  }
-  
-  // Update run status
-  updateRun(run.id, { status: 'running' });
+// Execute agent with real LLM call
+export async function executeAgent(scheduleId: string, organizationId: string): Promise<AgentRun> {
+  const schedule = await getSchedule(scheduleId, organizationId);
+  if (!schedule) throw new Error('Schedule not found');
+
+  const run = await createRun(scheduleId, organizationId, schedule);
+  await updateRun(run.id, { status: 'running' });
   run.logs.push(`[${new Date().toISOString()}] Starting ${schedule.agentType} agent`);
-  
+
   try {
-    // Simulate agent execution
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    run.logs.push(`[${new Date().toISOString()}] Processing data...`);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    run.logs.push(`[${new Date().toISOString()}] Generating results...`);
-    
-    // Simulate results based on agent type
+    const llmMapping = agentTypeToLLMAction[schedule.agentType];
+    if (!llmMapping) throw new Error(`No LLM action mapping for agent type: ${schedule.agentType}`);
+
+    const params = { ...llmMapping.defaultParams, ...schedule.config };
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || 'http://localhost:3000';
+    const response = await fetch(`${appUrl}/api/llm/seo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: llmMapping.action, params }),
+    });
+
+    let llmResult: string | null = null;
+    let llmError: string | null = null;
+    if (response.ok) {
+      const data = await response.json();
+      llmResult = data.result;
+    } else {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      llmError = errorData.error || `HTTP ${response.status}`;
+    }
+
     const result: Record<string, unknown> = {
       agentType: schedule.agentType,
-      itemsProcessed: Math.floor(Math.random() * 100) + 10,
-      insights: Math.floor(Math.random() * 20) + 1,
+      action: llmMapping.action,
       timestamp: new Date().toISOString(),
+      llmAnalysis: llmResult,
+      llmError,
+      usedLLM: !!llmResult,
     };
-    
-    updateRun(run.id, {
-      status: 'completed',
-      completedAt: new Date().toISOString(),
-      result,
+
+    await updateRun(run.id, { status: 'completed', completedAt: new Date().toISOString(), result });
+
+    // Update schedule stats
+    await updateSchedule(scheduleId, organizationId, {
+      lastRunAt: new Date().toISOString(),
+      nextRunAt: calculateNextRun(schedule),
+      runCount: schedule.runCount + 1,
     });
-    
-    run.logs.push(`[${new Date().toISOString()}] Completed successfully`);
-    
-    // Update schedule
-    schedule.lastRunAt = new Date().toISOString();
-    schedule.nextRunAt = calculateNextRun(schedule);
-    schedule.runCount++;
-    
+
+    run.status = 'completed';
+    run.result = result;
   } catch (error) {
-    updateRun(run.id, {
-      status: 'failed',
-      completedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-    
-    run.logs.push(`[${new Date().toISOString()}] Failed: ${error}`);
-    schedule.failureCount++;
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    await updateRun(run.id, { status: 'failed', completedAt: new Date().toISOString(), error: errMsg });
+    await updateSchedule(scheduleId, organizationId, { failureCount: schedule.failureCount + 1 });
+    run.status = 'failed';
+    run.error = errMsg;
   }
-  
+
   return run;
 }
 
-// Get due schedules
-export function getDueSchedules(): AgentSchedule[] {
+// Get due schedules for an org
+export async function getDueSchedules(organizationId: string): Promise<AgentSchedule[]> {
+  const all = await getSchedulesFromDB(organizationId);
   const now = new Date();
-  return Array.from(schedules.values()).filter(s => {
-    if (!s.enabled || !s.nextRunAt) return false;
-    return new Date(s.nextRunAt) <= now;
-  });
+  return all.filter(s => s.enabled && s.nextRunAt && new Date(s.nextRunAt) <= now);
+}
+
+// Initialize demo schedules into DB for the dev org (idempotent)
+export async function initializeDemoSchedules(): Promise<void> {
+  const DEV_ORG_ID = '00000000-0000-0000-0000-000000000001';
+  const DEV_USER_ID = '00000000-0000-0000-0000-000000000002';
+  const ACME_PROJECT_ID = '00000000-0000-0000-0000-000000000101';
+  const TECHSTART_PROJECT_ID = '00000000-0000-0000-0000-000000000102';
+
+  try {
+    const existing = await getSchedulesFromDB(DEV_ORG_ID);
+    if (existing.length > 0) return; // Already seeded
+
+    // Check org exists before seeding
+    const org = await prisma.organization.findUnique({ where: { id: DEV_ORG_ID } });
+    if (!org) return;
+
+    await createSchedule({ name: 'Daily Rank Check', agentType: 'rank_tracker', frequency: 'daily', timezone: 'America/New_York', enabled: true, config: { keywords: ['seo tools', 'keyword research'] }, projectId: ACME_PROJECT_ID, organizationId: DEV_ORG_ID, createdBy: DEV_USER_ID });
+    await createSchedule({ name: 'Weekly Backlink Monitor', agentType: 'backlink_monitor', frequency: 'weekly', timezone: 'America/New_York', enabled: true, config: { domain: 'acmecorp.com' }, projectId: ACME_PROJECT_ID, organizationId: DEV_ORG_ID, createdBy: DEV_USER_ID });
+    await createSchedule({ name: 'Monthly Site Audit', agentType: 'site_auditor', frequency: 'monthly', timezone: 'America/New_York', enabled: false, config: { depth: 100 }, projectId: TECHSTART_PROJECT_ID, organizationId: DEV_ORG_ID, createdBy: DEV_USER_ID });
+  } catch {
+    // Silently fail - DB might not be available
+  }
 }
 
 // Agent type metadata
 export const agentTypeMetadata: Record<AgentType, { name: string; description: string; icon: string }> = {
-  keyword_research: {
-    name: 'Keyword Research',
-    description: 'Discover new keyword opportunities',
-    icon: 'Search',
-  },
-  rank_tracker: {
-    name: 'Rank Tracker',
-    description: 'Monitor keyword rankings',
-    icon: 'TrendingUp',
-  },
-  backlink_monitor: {
-    name: 'Backlink Monitor',
-    description: 'Track backlink changes',
-    icon: 'Link',
-  },
-  site_auditor: {
-    name: 'Site Auditor',
-    description: 'Run technical SEO audits',
-    icon: 'FileSearch',
-  },
-  competitor_analyzer: {
-    name: 'Competitor Analyzer',
-    description: 'Analyze competitor strategies',
-    icon: 'Users',
-  },
-  content_optimizer: {
-    name: 'Content Optimizer',
-    description: 'Optimize content for SEO',
-    icon: 'FileText',
-  },
-  report_generator: {
-    name: 'Report Generator',
-    description: 'Generate automated reports',
-    icon: 'FileBarChart',
-  },
+  keyword_research: { name: 'Keyword Research', description: 'Discover new keyword opportunities', icon: 'Search' },
+  rank_tracker: { name: 'Rank Tracker', description: 'Monitor keyword rankings', icon: 'TrendingUp' },
+  backlink_monitor: { name: 'Backlink Monitor', description: 'Track backlink changes', icon: 'Link' },
+  site_auditor: { name: 'Site Auditor', description: 'Run technical SEO audits', icon: 'FileSearch' },
+  competitor_analyzer: { name: 'Competitor Analyzer', description: 'Analyze competitor strategies', icon: 'Users' },
+  content_optimizer: { name: 'Content Optimizer', description: 'Optimize content for SEO', icon: 'FileText' },
+  report_generator: { name: 'Report Generator', description: 'Generate automated reports', icon: 'FileBarChart' },
 };
-
-// Initialize demo schedules
-export function initializeDemoSchedules(): void {
-  createSchedule({
-    name: 'Daily Rank Check',
-    agentType: 'rank_tracker',
-    frequency: 'daily',
-    timezone: 'America/New_York',
-    enabled: true,
-    config: { keywords: ['seo tools', 'keyword research'] },
-    projectId: 'project-1',
-    organizationId: 'org-1',
-    createdBy: 'user-1',
-  });
-  
-  createSchedule({
-    name: 'Weekly Backlink Monitor',
-    agentType: 'backlink_monitor',
-    frequency: 'weekly',
-    timezone: 'America/New_York',
-    enabled: true,
-    config: { domain: 'example.com' },
-    projectId: 'project-1',
-    organizationId: 'org-1',
-    createdBy: 'user-1',
-  });
-  
-  createSchedule({
-    name: 'Monthly Site Audit',
-    agentType: 'site_auditor',
-    frequency: 'monthly',
-    timezone: 'America/New_York',
-    enabled: false,
-    config: { depth: 100 },
-    projectId: 'project-1',
-    organizationId: 'org-1',
-    createdBy: 'user-1',
-  });
-}
-
-// Initialize demo data
-initializeDemoSchedules();

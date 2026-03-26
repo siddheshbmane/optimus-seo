@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Globe, Users, Plus, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ export function ProjectBar({
   badge,
 }: ProjectBarProps) {
   const pathname = usePathname();
+  const router = useRouter();
 
   const getActivePhase = () => {
     for (const tab of phaseTabs) {
@@ -126,7 +127,11 @@ export function ProjectBar({
 
         {/* Action buttons */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          <Button variant="ghost" size="sm">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push(`/projects/${projectId}/settings`)}
+          >
             <Users className="h-4 w-4 mr-1" />
             Invite
           </Button>

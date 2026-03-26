@@ -44,7 +44,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { SlidePanel } from "@/components/ui/slide-panel";
-import { getProjectById } from "@/data/mock-projects";
+import { useProjectContext } from "@/contexts/project-context";
+import { useProjectConfig } from "@/contexts/project-config-context";
+import { useGMBData } from "@/hooks/use-seo-data";
+import { DataSourceIndicator } from "@/components/ui/data-source-indicator";
 import { formatNumber, cn } from "@/lib/utils";
 
 type TabType = "overview" | "reviews" | "posts" | "photos" | "insights" | "competitors" | "citations";
@@ -176,7 +179,8 @@ const optimizationTips = [
 export default function GMBAnalysisPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = getProjectById(projectId);
+  const { project } = useProjectContext();
+  const { config } = useProjectConfig();
 
   const [activeTab, setActiveTab] = React.useState<TabType>("overview");
   const [showReplyModal, setShowReplyModal] = React.useState(false);
@@ -189,7 +193,37 @@ export default function GMBAnalysisPage() {
   const [filterRating, setFilterRating] = React.useState<string>("all");
   const [showFilterDropdown, setShowFilterDropdown] = React.useState(false);
 
+  // Fetch GMB data from API (with mock fallback)
+  const businessName = config?.businessInfo?.name || project?.name || '';
+  const { data: apiGMBData, isLoading: gmbLoading, source: gmbSource, refetch: refetchGMB } = useGMBData(
+    businessName
+  );
+
   if (!project) return null;
+
+  // Use API data if available, otherwise use mock data
+  const gmbDataToUse = React.useMemo(() => {
+    if (apiGMBData) {
+      return {
+        name: apiGMBData.businessName,
+        address: apiGMBData.address,
+        phone: apiGMBData.phone,
+        website: apiGMBData.website,
+        category: apiGMBData.categories[0] || "Business",
+        rating: apiGMBData.rating,
+        totalReviews: apiGMBData.reviewCount,
+        responseRate: 95, // Not available from API
+        avgResponseTime: "2 hours", // Not available from API
+        photos: apiGMBData.photos,
+        posts: 12, // Not available from API
+        questions: 8, // Not available from API
+        views: 15600, // Not available from API
+        searches: 8900, // Not available from API
+        actions: 2340, // Not available from API
+      };
+    }
+    return gmbData;
+  }, [apiGMBData]);
 
   const completenessScore = Math.round(
     (profileCompleteness.filter(p => p.complete).length / profileCompleteness.length) * 100
@@ -231,7 +265,10 @@ export default function GMBAnalysisPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Local SEO & GMB</h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-text-primary">Local SEO & GMB</h1>
+            <DataSourceIndicator source={gmbSource} isLoading={gmbLoading} onRefresh={refetchGMB} compact />
+          </div>
           <p className="text-text-secondary">
             Google Business Profile optimization and local search insights
           </p>
@@ -241,7 +278,7 @@ export default function GMBAnalysisPage() {
             <ExternalLink className="h-4 w-4 mr-2" />
             Open in Google
           </Button>
-          <Button variant="accent">
+          <Button variant="accent" onClick={refetchGMB}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Sync Data
           </Button>
@@ -285,27 +322,27 @@ export default function GMBAnalysisPage() {
             />
             <StatCard
               label="Average Rating"
-              value={gmbData.rating.toString()}
-              trendLabel={`${gmbData.totalReviews} reviews`}
+              value={gmbDataToUse.rating.toString()}
+              trendLabel={`${gmbDataToUse.totalReviews} reviews`}
               icon={<Star className="h-5 w-5" />}
             />
             <StatCard
               label="Profile Views"
-              value={formatNumber(gmbData.views)}
+              value={formatNumber(gmbDataToUse.views)}
               trend={12}
               trendLabel="vs last month"
               icon={<Eye className="h-5 w-5" />}
             />
             <StatCard
               label="Search Appearances"
-              value={formatNumber(gmbData.searches)}
+              value={formatNumber(gmbDataToUse.searches)}
               trend={8}
               trendLabel="vs last month"
               icon={<Search className="h-5 w-5" />}
             />
             <StatCard
               label="Customer Actions"
-              value={formatNumber(gmbData.actions)}
+              value={formatNumber(gmbDataToUse.actions)}
               trend={15}
               trendLabel="vs last month"
               icon={<Navigation className="h-5 w-5" />}
@@ -324,12 +361,12 @@ export default function GMBAnalysisPage() {
                     <MapPin className="h-8 w-8 text-accent" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-text-primary">{gmbData.name}</h3>
-                    <p className="text-text-secondary">{gmbData.category}</p>
+                    <h3 className="text-lg font-semibold text-text-primary">{gmbDataToUse.name}</h3>
+                    <p className="text-text-secondary">{gmbDataToUse.category}</p>
                     <div className="flex items-center gap-1 mt-1">
                       <Star className="h-4 w-4 fill-warning text-warning" />
-                      <span className="font-medium text-text-primary">{gmbData.rating}</span>
-                      <span className="text-text-muted">({gmbData.totalReviews} reviews)</span>
+                      <span className="font-medium text-text-primary">{gmbDataToUse.rating}</span>
+                      <span className="text-text-muted">({gmbDataToUse.totalReviews} reviews)</span>
                     </div>
                   </div>
                 </div>
@@ -339,28 +376,28 @@ export default function GMBAnalysisPage() {
                     <MapPin className="h-5 w-5 text-text-muted" />
                     <div>
                       <p className="text-xs text-text-muted">Address</p>
-                      <p className="text-sm text-text-primary">{gmbData.address}</p>
+                      <p className="text-sm text-text-primary">{gmbDataToUse.address}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-bg-elevated">
                     <Phone className="h-5 w-5 text-text-muted" />
                     <div>
                       <p className="text-xs text-text-muted">Phone</p>
-                      <p className="text-sm text-text-primary">{gmbData.phone}</p>
+                      <p className="text-sm text-text-primary">{gmbDataToUse.phone}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-bg-elevated">
                     <Globe className="h-5 w-5 text-text-muted" />
                     <div>
                       <p className="text-xs text-text-muted">Website</p>
-                      <p className="text-sm text-text-primary">{gmbData.website}</p>
+                      <p className="text-sm text-text-primary">{gmbDataToUse.website}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-bg-elevated">
                     <Clock className="h-5 w-5 text-text-muted" />
                     <div>
                       <p className="text-xs text-text-muted">Avg Response Time</p>
-                      <p className="text-sm text-text-primary">{gmbData.avgResponseTime}</p>
+                      <p className="text-sm text-text-primary">{gmbDataToUse.avgResponseTime}</p>
                     </div>
                   </div>
                 </div>
@@ -490,19 +527,19 @@ export default function GMBAnalysisPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <StatCard
               label="Total Reviews"
-              value={gmbData.totalReviews}
+              value={gmbDataToUse.totalReviews}
               trend={8}
               trendLabel="this month"
               icon={<MessageSquare className="h-5 w-5" />}
             />
             <StatCard
               label="Average Rating"
-              value={gmbData.rating.toString()}
+              value={gmbDataToUse.rating.toString()}
               icon={<Star className="h-5 w-5" />}
             />
             <StatCard
               label="Response Rate"
-              value={`${gmbData.responseRate}%`}
+              value={`${gmbDataToUse.responseRate}%`}
               icon={<Reply className="h-5 w-5" />}
             />
             <StatCard
@@ -661,7 +698,7 @@ export default function GMBAnalysisPage() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-text-primary">Photos</h2>
-              <p className="text-sm text-text-muted">{gmbData.photos} photos uploaded</p>
+              <p className="text-sm text-text-muted">{gmbDataToUse.photos} photos uploaded</p>
             </div>
             <Button variant="accent" onClick={() => setShowPhotoModal(true)}>
               <Plus className="h-4 w-4 mr-2" />
@@ -722,7 +759,7 @@ export default function GMBAnalysisPage() {
                     <Search className="h-5 w-5 text-accent" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-text-primary">{formatNumber(gmbData.searches)}</p>
+                    <p className="text-2xl font-bold text-text-primary">{formatNumber(gmbDataToUse.searches)}</p>
                     <p className="text-sm text-text-muted">Search Appearances</p>
                   </div>
                 </div>
@@ -749,7 +786,7 @@ export default function GMBAnalysisPage() {
                     <Eye className="h-5 w-5 text-success" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-text-primary">{formatNumber(gmbData.views)}</p>
+                    <p className="text-2xl font-bold text-text-primary">{formatNumber(gmbDataToUse.views)}</p>
                     <p className="text-sm text-text-muted">Profile Views</p>
                   </div>
                 </div>
@@ -772,7 +809,7 @@ export default function GMBAnalysisPage() {
                     <Navigation className="h-5 w-5 text-info" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-text-primary">{formatNumber(gmbData.actions)}</p>
+                    <p className="text-2xl font-bold text-text-primary">{formatNumber(gmbDataToUse.actions)}</p>
                     <p className="text-sm text-text-muted">Customer Actions</p>
                   </div>
                 </div>
@@ -860,14 +897,14 @@ export default function GMBAnalysisPage() {
                   </thead>
                   <tbody>
                     <tr className="border-b border-border bg-accent/5">
-                      <td className="p-4 font-medium text-accent">{gmbData.name} (You)</td>
+                      <td className="p-4 font-medium text-accent">{gmbDataToUse.name} (You)</td>
                       <td className="p-4 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <Star className="h-4 w-4 fill-warning text-warning" />
-                          <span className="font-mono text-text-primary">{gmbData.rating}</span>
+                          <span className="font-mono text-text-primary">{gmbDataToUse.rating}</span>
                         </div>
                       </td>
-                      <td className="p-4 text-center font-mono text-text-primary">{gmbData.totalReviews}</td>
+                      <td className="p-4 text-center font-mono text-text-primary">{gmbDataToUse.totalReviews}</td>
                       <td className="p-4 text-center text-text-muted">—</td>
                       <td className="p-4 text-center">
                         <Badge variant="success">#2</Badge>
