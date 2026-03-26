@@ -54,13 +54,12 @@ export async function POST(request: NextRequest) {
     
     switch (method) {
       // SERP API
-      case 'serpGoogleOrganic':
-        result = await dataForSEOClient.serpGoogleOrganic(
-          params.keywords as string[],
-          params.locationCode as number,
-          params.languageCode as string
-        );
+      case 'serpGoogleOrganic': {
+        const keywords = Array.isArray(params.keywords) ? params.keywords as string[] : [params.keyword as string].filter(Boolean);
+        if (!keywords.length) return NextResponse.json({ error: 'keywords array is required' }, { status: 400 });
+        result = await dataForSEOClient.serpGoogleOrganic(keywords, params.locationCode as number, params.languageCode as string);
         break;
+      }
 
       // Keywords API
       case 'keywordsSearchVolume':

@@ -351,24 +351,37 @@ export async function getDueSchedules(organizationId: string): Promise<AgentSche
   return all.filter(s => s.enabled && s.nextRunAt && new Date(s.nextRunAt) <= now);
 }
 
-// Initialize demo schedules into DB for the dev org (idempotent)
-export async function initializeDemoSchedules(): Promise<void> {
-  const DEV_ORG_ID = '00000000-0000-0000-0000-000000000001';
-  const DEV_USER_ID = '00000000-0000-0000-0000-000000000002';
-  const ACME_PROJECT_ID = '00000000-0000-0000-0000-000000000101';
-  const TECHSTART_PROJECT_ID = '00000000-0000-0000-0000-000000000102';
-
+// Initialize demo schedules into DB for a given org (idempotent)
+// Seeds 3 default agent schedules for the first project found in the org
+export async function initializeDemoSchedules(organizationId?: string): Promise<void> {
   try {
-    const existing = await getSchedulesFromDB(DEV_ORG_ID);
+    // If no org provided, try the seeded dev org first
+    const orgId = organizationId || '00000000-0000-0000-0000-000000000001';
+
+    const existing = await getSchedulesFromDB(orgId);
     if (existing.length > 0) return; // Already seeded
 
-    // Check org exists before seeding
-    const org = await prisma.organization.findUnique({ where: { id: DEV_ORG_ID } });
-    if (!org) return;
+    // Find the first project in this org to use as the target
+    const firstProject = await prisma.project.findFirst({
+      where: { organizationId: orgId, deletedAt: null },
+      select: { id: true, createdById: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!firstProject) return; // No projects yet
 
-    await createSchedule({ name: 'Daily Rank Check', agentType: 'rank_tracker', frequency: 'daily', timezone: 'America/New_York', enabled: true, config: { keywords: ['seo tools', 'keyword research'] }, projectId: ACME_PROJECT_ID, organizationId: DEV_ORG_ID, createdBy: DEV_USER_ID });
-    await createSchedule({ name: 'Weekly Backlink Monitor', agentType: 'backlink_monitor', frequency: 'weekly', timezone: 'America/New_York', enabled: true, config: { domain: 'acmecorp.com' }, projectId: ACME_PROJECT_ID, organizationId: DEV_ORG_ID, createdBy: DEV_USER_ID });
-    await createSchedule({ name: 'Monthly Site Audit', agentType: 'site_auditor', frequency: 'monthly', timezone: 'America/New_York', enabled: false, config: { depth: 100 }, projectId: TECHSTART_PROJECT_ID, organizationId: DEV_ORG_ID, createdBy: DEV_USER_ID });
+    // Find org owner/admin for createdBy
+    const orgUser = await prisma.user.findFirst({
+      where: { organizationId: orgId },
+      select: { id: true },
+    });
+    if (!orgUser) return;
+
+    const createdBy = firstProject.createdById || orgUser.id;
+    const projectId = firstProject.id;
+
+    await createSchedule({ name: 'Daily Rank Check', agentType: 'rank_tracker', frequency: 'daily', timezone: 'UTC', enabled: true, config: { keywords: ['seo tools', 'keyword research'] }, projectId, organizationId: orgId, createdBy });
+    await createSchedule({ name: 'Weekly Backlink Monitor', agentType: 'backlink_monitor', frequency: 'weekly', timezone: 'UTC', enabled: true, config: { domain: 'example.com' }, projectId, organizationId: orgId, createdBy });
+    await createSchedule({ name: 'Monthly Site Audit', agentType: 'site_auditor', frequency: 'monthly', timezone: 'UTC', enabled: false, config: { depth: 100 }, projectId, organizationId: orgId, createdBy });
   } catch {
     // Silently fail - DB might not be available
   }

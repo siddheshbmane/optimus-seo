@@ -11,18 +11,18 @@ import {
 // GET - List webhooks
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth();
+    const session = await requireAuth();
     const { searchParams } = new URL(request.url);
-    const organizationId = searchParams.get('organizationId') || undefined;
-    
-    const webhooks = listWebhooks(organizationId);
-    
+    const organizationId = searchParams.get('organizationId') || session.organizationId;
+
+    const webhooks = await listWebhooks(organizationId);
+
     // Hide secrets in response
     const safeWebhooks = webhooks.map(w => ({
       ...w,
       secret: w.secret ? '••••••••' : undefined,
     }));
-    
+
     return NextResponse.json({
       success: true,
       data: safeWebhooks,
@@ -40,48 +40,45 @@ export async function GET(request: NextRequest) {
 // POST - Create webhook or trigger event
 export async function POST(request: NextRequest) {
   try {
-    await requireAuth();
+    const session = await requireAuth();
     const body = await request.json();
     const { action } = body;
-    
+
     if (action === 'trigger') {
-      // Trigger webhooks for an event
-      const { event, data, organizationId, projectId } = body;
-      
-      if (!event || !organizationId) {
+      const { event, data, projectId } = body;
+      const organizationId = body.organizationId || session.organizationId;
+
+      if (!event) {
         return NextResponse.json(
-          { success: false, error: 'Missing required fields: event, organizationId' },
+          { success: false, error: 'Missing required field: event' },
           { status: 400 }
         );
       }
-      
+
       const deliveries = await triggerWebhooks(
         event as WebhookEvent,
         data || {},
         organizationId,
         projectId
       );
-      
+
       return NextResponse.json({
         success: true,
-        data: {
-          triggered: deliveries.length,
-          deliveries,
-        },
+        data: { triggered: deliveries.length, deliveries },
       });
     }
-    
+
     // Create new webhook
-    const { name, provider, url, events, organizationId, projectIds, secret } = body;
-    
-    if (!name || !provider || !url || !events || !organizationId) {
+    const { name, provider, url, events, projectIds, secret } = body;
+    const organizationId = body.organizationId || session.organizationId;
+
+    if (!name || !provider || !url || !events) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields' },
+        { success: false, error: 'Missing required fields: name, provider, url, events' },
         { status: 400 }
       );
     }
-    
-    // Validate provider
+
     const validProviders: WebhookProvider[] = ['slack', 'discord', 'custom'];
     if (!validProviders.includes(provider)) {
       return NextResponse.json(
@@ -89,8 +86,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    
-    // Validate URL
+
     try {
       new URL(url);
     } catch {
@@ -99,8 +95,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    
-    const webhook = createWebhook({
+
+    const webhook = await createWebhook({
       name,
       provider,
       url,
@@ -110,7 +106,7 @@ export async function POST(request: NextRequest) {
       projectIds,
       secret,
     });
-    
+
     return NextResponse.json({
       success: true,
       data: {

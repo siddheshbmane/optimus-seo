@@ -1,8 +1,12 @@
 // Webhook Integrations - Slack, Discord, and custom webhooks
+// State persisted in OrgSetting JSON (survives serverless restarts)
+
+import { prisma } from '@/lib/db';
+import type { Prisma } from '@/generated/prisma';
 
 export type WebhookProvider = 'slack' | 'discord' | 'custom';
 
-export type WebhookEvent = 
+export type WebhookEvent =
   | 'report.generated'
   | 'report.scheduled'
   | 'ranking.changed'
@@ -22,8 +26,8 @@ export interface WebhookConfig {
   events: WebhookEvent[];
   enabled: boolean;
   organizationId: string;
-  projectIds?: string[]; // Optional: limit to specific projects
-  secret?: string; // For signature verification
+  projectIds?: string[];
+  secret?: string;
   createdAt: string;
   updatedAt: string;
   lastTriggeredAt?: string;
@@ -52,14 +56,33 @@ export interface WebhookDelivery {
   deliveredAt?: string;
 }
 
-// In-memory storage
-const webhooks: Map<string, WebhookConfig> = new Map();
-const deliveries: Map<string, WebhookDelivery> = new Map();
+const ORG_WEBHOOKS_KEY = 'webhooks';
+
+async function getWebhooksFromDB(organizationId: string): Promise<WebhookConfig[]> {
+  try {
+    const setting = await prisma.orgSetting.findUnique({
+      where: { organizationId_key: { organizationId, key: ORG_WEBHOOKS_KEY } },
+    });
+    if (!setting) return [];
+    const value = setting.value as unknown;
+    return Array.isArray(value) ? (value as WebhookConfig[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveWebhooksToDB(organizationId: string, configs: WebhookConfig[]): Promise<void> {
+  await prisma.orgSetting.upsert({
+    where: { organizationId_key: { organizationId, key: ORG_WEBHOOKS_KEY } },
+    create: { organizationId, key: ORG_WEBHOOKS_KEY, value: configs as unknown as Prisma.JsonArray },
+    update: { value: configs as unknown as Prisma.JsonArray },
+  });
+}
 
 // Create webhook
-export function createWebhook(
+export async function createWebhook(
   config: Omit<WebhookConfig, 'id' | 'createdAt' | 'updatedAt' | 'failureCount'>
-): WebhookConfig {
+): Promise<WebhookConfig> {
   const webhook: WebhookConfig = {
     ...config,
     id: `webhook-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -67,40 +90,44 @@ export function createWebhook(
     updatedAt: new Date().toISOString(),
     failureCount: 0,
   };
-  
-  webhooks.set(webhook.id, webhook);
+  const existing = await getWebhooksFromDB(config.organizationId);
+  existing.push(webhook);
+  await saveWebhooksToDB(config.organizationId, existing);
   return webhook;
 }
 
 // Get webhook
-export function getWebhook(id: string): WebhookConfig | undefined {
-  return webhooks.get(id);
+export async function getWebhook(organizationId: string, id: string): Promise<WebhookConfig | undefined> {
+  const all = await getWebhooksFromDB(organizationId);
+  return all.find(w => w.id === id);
 }
 
 // List webhooks
-export function listWebhooks(organizationId?: string): WebhookConfig[] {
-  const all = Array.from(webhooks.values());
-  if (organizationId) {
-    return all.filter(w => w.organizationId === organizationId);
-  }
-  return all;
+export async function listWebhooks(organizationId: string): Promise<WebhookConfig[]> {
+  return getWebhooksFromDB(organizationId);
 }
 
 // Update webhook
-export function updateWebhook(
+export async function updateWebhook(
+  organizationId: string,
   id: string,
   updates: Partial<Omit<WebhookConfig, 'id' | 'createdAt'>>
-): WebhookConfig | undefined {
-  const webhook = webhooks.get(id);
-  if (!webhook) return undefined;
-  
-  Object.assign(webhook, updates, { updatedAt: new Date().toISOString() });
-  return webhook;
+): Promise<WebhookConfig | undefined> {
+  const all = await getWebhooksFromDB(organizationId);
+  const idx = all.findIndex(w => w.id === id);
+  if (idx === -1) return undefined;
+  Object.assign(all[idx], updates, { updatedAt: new Date().toISOString() });
+  await saveWebhooksToDB(organizationId, all);
+  return all[idx];
 }
 
 // Delete webhook
-export function deleteWebhook(id: string): boolean {
-  return webhooks.delete(id);
+export async function deleteWebhook(organizationId: string, id: string): Promise<boolean> {
+  const all = await getWebhooksFromDB(organizationId);
+  const filtered = all.filter(w => w.id !== id);
+  if (filtered.length === all.length) return false;
+  await saveWebhooksToDB(organizationId, filtered);
+  return true;
 }
 
 // Format payload for Slack
@@ -117,7 +144,6 @@ function formatSlackPayload(payload: WebhookPayload): Record<string, unknown> {
     'alert.triggered': 'Alert Triggered',
     'bulk.completed': 'Bulk Operation Completed',
   };
-  
   const eventColors: Record<string, string> = {
     'report.generated': '#36a64f',
     'ranking.changed': '#2196F3',
@@ -129,7 +155,6 @@ function formatSlackPayload(payload: WebhookPayload): Record<string, unknown> {
     'alert.triggered': '#FF9800',
     'bulk.completed': '#36a64f',
   };
-  
   return {
     attachments: [
       {
@@ -157,28 +182,24 @@ function formatDiscordPayload(payload: WebhookPayload): Record<string, unknown> 
     'alert.triggered': 'Alert Triggered',
     'bulk.completed': 'Bulk Operation Completed',
   };
-  
   const eventColors: Record<string, number> = {
     'report.generated': 0x36a64f,
-    'ranking.changed': 0x2196F3,
+    'ranking.changed': 0x2196f3,
     'ranking.dropped': 0xf44336,
-    'backlink.new': 0x4CAF50,
-    'backlink.lost': 0xFF9800,
+    'backlink.new': 0x4caf50,
+    'backlink.lost': 0xff9800,
     'agent.completed': 0x36a64f,
     'agent.failed': 0xf44336,
-    'alert.triggered': 0xFF9800,
+    'alert.triggered': 0xff9800,
     'bulk.completed': 0x36a64f,
   };
-  
   return {
     embeds: [
       {
         title: eventLabels[payload.event] || payload.event,
         description: '```json\n' + JSON.stringify(payload.data, null, 2) + '\n```',
         color: eventColors[payload.event] || 0x808080,
-        footer: {
-          text: 'Optimus SEO',
-        },
+        footer: { text: 'Optimus SEO' },
         timestamp: payload.timestamp,
       },
     ],
@@ -187,22 +208,16 @@ function formatDiscordPayload(payload: WebhookPayload): Record<string, unknown> 
 
 // Send webhook
 export async function sendWebhook(
+  organizationId: string,
   webhookId: string,
   payload: WebhookPayload
 ): Promise<WebhookDelivery> {
-  const webhook = webhooks.get(webhookId);
-  if (!webhook) {
-    throw new Error('Webhook not found');
-  }
-  
-  if (!webhook.enabled) {
-    throw new Error('Webhook is disabled');
-  }
-  
-  if (!webhook.events.includes(payload.event)) {
-    throw new Error('Event not subscribed');
-  }
-  
+  const all = await getWebhooksFromDB(organizationId);
+  const webhook = all.find(w => w.id === webhookId);
+  if (!webhook) throw new Error('Webhook not found');
+  if (!webhook.enabled) throw new Error('Webhook is disabled');
+  if (!webhook.events.includes(payload.event)) throw new Error('Event not subscribed');
+
   const delivery: WebhookDelivery = {
     id: `delivery-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     webhookId,
@@ -212,11 +227,8 @@ export async function sendWebhook(
     attempts: 0,
     createdAt: new Date().toISOString(),
   };
-  
-  deliveries.set(delivery.id, delivery);
-  
+
   try {
-    // Format payload based on provider
     let formattedPayload: Record<string, unknown>;
     switch (webhook.provider) {
       case 'slack':
@@ -228,9 +240,9 @@ export async function sendWebhook(
       default:
         formattedPayload = payload as unknown as Record<string, unknown>;
     }
-    
+
     delivery.attempts++;
-    
+
     const response = await fetch(webhook.url, {
       method: 'POST',
       headers: {
@@ -239,9 +251,8 @@ export async function sendWebhook(
       },
       body: JSON.stringify(formattedPayload),
     });
-    
+
     delivery.statusCode = response.status;
-    
     if (response.ok) {
       delivery.status = 'success';
       delivery.deliveredAt = new Date().toISOString();
@@ -253,12 +264,18 @@ export async function sendWebhook(
       delivery.response = await response.text();
       webhook.failureCount++;
     }
+
+    // Persist updated webhook stats
+    const updated = all.map(w => (w.id === webhookId ? webhook : w));
+    await saveWebhooksToDB(organizationId, updated);
   } catch (error) {
     delivery.status = 'failed';
     delivery.error = error instanceof Error ? error.message : 'Unknown error';
     webhook.failureCount++;
+    const updated = all.map(w => (w.id === webhookId ? webhook : w));
+    await saveWebhooksToDB(organizationId, updated);
   }
-  
+
   return delivery;
 }
 
@@ -276,55 +293,20 @@ export async function triggerWebhooks(
     organizationId,
     projectId,
   };
-  
-  // Find matching webhooks
-  const matchingWebhooks = Array.from(webhooks.values()).filter(w => {
-    if (w.organizationId !== organizationId) return false;
+
+  const all = await getWebhooksFromDB(organizationId);
+  const matching = all.filter(w => {
     if (!w.enabled) return false;
     if (!w.events.includes(event)) return false;
     if (projectId && w.projectIds && !w.projectIds.includes(projectId)) return false;
     return true;
   });
-  
-  // Send to all matching webhooks
+
   const results = await Promise.allSettled(
-    matchingWebhooks.map(w => sendWebhook(w.id, payload))
+    matching.map(w => sendWebhook(organizationId, w.id, payload))
   );
-  
+
   return results
     .filter((r): r is PromiseFulfilledResult<WebhookDelivery> => r.status === 'fulfilled')
     .map(r => r.value);
 }
-
-// List deliveries
-export function listDeliveries(webhookId?: string): WebhookDelivery[] {
-  const all = Array.from(deliveries.values());
-  if (webhookId) {
-    return all.filter(d => d.webhookId === webhookId);
-  }
-  return all;
-}
-
-// Initialize demo webhooks
-export function initializeDemoWebhooks(): void {
-  createWebhook({
-    name: 'Slack Notifications',
-    provider: 'slack',
-    url: 'https://hooks.slack.com/services/demo/webhook',
-    events: ['report.generated', 'ranking.dropped', 'agent.failed'],
-    enabled: true,
-    organizationId: 'org-1',
-  });
-  
-  createWebhook({
-    name: 'Discord Alerts',
-    provider: 'discord',
-    url: 'https://discord.com/api/webhooks/demo/webhook',
-    events: ['alert.triggered', 'backlink.lost'],
-    enabled: true,
-    organizationId: 'org-1',
-  });
-}
-
-// Initialize demo data
-initializeDemoWebhooks();

@@ -1,7 +1,11 @@
 // Bulk Operations Processor
 // Handles batch processing of keywords, domains, and other bulk operations
+// State persisted in OrgSetting JSON (survives serverless restarts)
 
-export type BulkOperationType = 
+import { prisma } from '@/lib/db';
+import type { Prisma } from '@/generated/prisma';
+
+export type BulkOperationType =
   | 'keyword_research'
   | 'rank_check'
   | 'backlink_analysis'
@@ -22,6 +26,7 @@ export interface BulkOperation {
   createdAt: string;
   projectId: string;
   userId: string;
+  organizationId: string;
 }
 
 export interface BulkOperationResult {
@@ -36,16 +41,56 @@ export interface BulkOperationError {
   code?: string;
 }
 
-// In-memory storage
-const operations: Map<string, BulkOperation> = new Map();
+const ORG_BULK_KEY_PREFIX = 'bulk_op_';
+
+async function saveToDB(op: BulkOperation): Promise<void> {
+  const key = `${ORG_BULK_KEY_PREFIX}${op.id}`;
+  await prisma.orgSetting.upsert({
+    where: { organizationId_key: { organizationId: op.organizationId, key } },
+    create: { organizationId: op.organizationId, key, value: op as unknown as Prisma.JsonObject },
+    update: { value: op as unknown as Prisma.JsonObject },
+  });
+}
+
+async function loadFromDB(organizationId: string, opId: string): Promise<BulkOperation | undefined> {
+  try {
+    const key = `${ORG_BULK_KEY_PREFIX}${opId}`;
+    const setting = await prisma.orgSetting.findUnique({
+      where: { organizationId_key: { organizationId, key } },
+    });
+    if (!setting) return undefined;
+    return setting.value as unknown as BulkOperation;
+  } catch {
+    return undefined;
+  }
+}
+
+async function listFromDB(organizationId: string, projectId?: string): Promise<BulkOperation[]> {
+  try {
+    const settings = await prisma.orgSetting.findMany({
+      where: {
+        organizationId,
+        key: { startsWith: ORG_BULK_KEY_PREFIX },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    });
+    const ops = settings.map(s => s.value as unknown as BulkOperation);
+    if (projectId) return ops.filter(op => op.projectId === projectId);
+    return ops;
+  } catch {
+    return [];
+  }
+}
 
 // Create bulk operation
-export function createBulkOperation(
+export async function createBulkOperation(
   type: BulkOperationType,
   items: string[],
   projectId: string,
-  userId: string
-): BulkOperation {
+  userId: string,
+  organizationId: string
+): Promise<BulkOperation> {
   const operation: BulkOperation = {
     id: `bulk-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     type,
@@ -58,91 +103,50 @@ export function createBulkOperation(
     createdAt: new Date().toISOString(),
     projectId,
     userId,
+    organizationId,
   };
-  
-  operations.set(operation.id, operation);
+  await saveToDB(operation);
   return operation;
 }
 
 // Get operation status
-export function getOperation(id: string): BulkOperation | undefined {
-  return operations.get(id);
+export async function getOperation(organizationId: string, id: string): Promise<BulkOperation | undefined> {
+  return loadFromDB(organizationId, id);
 }
 
 // List operations
-export function listOperations(projectId?: string): BulkOperation[] {
-  const all = Array.from(operations.values());
-  if (projectId) {
-    return all.filter(op => op.projectId === projectId);
-  }
-  return all;
-}
-
-// Process operation (simulated)
-export async function processOperation(
-  id: string,
-  processor: (item: string) => Promise<Record<string, unknown>>
-): Promise<BulkOperation> {
-  const operation = operations.get(id);
-  if (!operation) {
-    throw new Error('Operation not found');
-  }
-  
-  operation.status = 'processing';
-  operation.startedAt = new Date().toISOString();
-  
-  for (const item of operation.items) {
-    // Check if cancelled (status can change during processing)
-    const currentOp = operations.get(id);
-    if (currentOp?.status === 'cancelled') break;
-    
-    try {
-      const data = await processor(item);
-      operation.results.push({
-        item,
-        data,
-        processedAt: new Date().toISOString(),
-      });
-    } catch (error) {
-      operation.errors.push({
-        item,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-    
-    operation.processedCount++;
-  }
-  
-  operation.status = operation.errors.length === operation.totalCount ? 'failed' : 'completed';
-  operation.completedAt = new Date().toISOString();
-  
-  return operation;
+export async function listOperations(organizationId: string, projectId?: string): Promise<BulkOperation[]> {
+  return listFromDB(organizationId, projectId);
 }
 
 // Cancel operation
-export function cancelOperation(id: string): boolean {
-  const operation = operations.get(id);
-  if (!operation || operation.status !== 'processing') {
-    return false;
-  }
+export async function cancelOperation(organizationId: string, id: string): Promise<boolean> {
+  const operation = await loadFromDB(organizationId, id);
+  if (!operation || operation.status !== 'processing') return false;
   operation.status = 'cancelled';
+  await saveToDB(operation);
   return true;
 }
 
 // Delete operation
-export function deleteOperation(id: string): boolean {
-  return operations.delete(id);
+export async function deleteOperation(organizationId: string, id: string): Promise<boolean> {
+  try {
+    const key = `${ORG_BULK_KEY_PREFIX}${id}`;
+    await prisma.orgSetting.delete({
+      where: { organizationId_key: { organizationId, key } },
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Parse bulk input (handles various formats)
 export function parseBulkInput(input: string): string[] {
-  // Split by newlines, commas, or semicolons
   const items = input
     .split(/[\n,;]+/)
     .map(item => item.trim())
     .filter(item => item.length > 0);
-  
-  // Remove duplicates
   return [...new Set(items)];
 }
 
@@ -153,7 +157,7 @@ export function validateItems(
 ): { valid: string[]; invalid: { item: string; reason: string }[] } {
   const valid: string[] = [];
   const invalid: { item: string; reason: string }[] = [];
-  
+
   for (const item of items) {
     switch (type) {
       case 'keyword_research':
@@ -166,11 +170,10 @@ export function validateItems(
           valid.push(item);
         }
         break;
-        
+
       case 'backlink_analysis':
       case 'site_audit':
-      case 'competitor_analysis':
-        // Basic domain validation
+      case 'competitor_analysis': {
         const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,}$/;
         if (!domainRegex.test(item)) {
           invalid.push({ item, reason: 'Invalid domain format' });
@@ -178,8 +181,9 @@ export function validateItems(
           valid.push(item);
         }
         break;
+      }
     }
   }
-  
+
   return { valid, invalid };
 }

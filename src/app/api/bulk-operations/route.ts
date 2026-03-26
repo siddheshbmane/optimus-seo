@@ -11,12 +11,12 @@ import {
 // GET - List all bulk operations
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth();
+    const session = await requireAuth();
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId') || undefined;
-    
-    const operations = listOperations(projectId);
-    
+
+    const operations = await listOperations(session.organizationId, projectId);
+
     return NextResponse.json({
       success: true,
       data: operations,
@@ -35,49 +35,47 @@ export async function GET(request: NextRequest) {
 // POST - Create a new bulk operation
 export async function POST(request: NextRequest) {
   try {
-    await requireAuth();
+    const session = await requireAuth();
     const body = await request.json();
     const { type, input, projectId, userId } = body;
-    
+
     if (!type || !input) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields: type, input' },
         { status: 400 }
       );
     }
-    
-    // Parse input into items
+
     const items = parseBulkInput(input);
-    
+
     if (items.length === 0) {
       return NextResponse.json(
         { success: false, error: 'No valid items found in input' },
         { status: 400 }
       );
     }
-    
-    // Validate items
+
     const validation = validateItems(type as BulkOperationType, items);
-    
+
     if (validation.valid.length === 0) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'All items failed validation',
           invalid: validation.invalid,
         },
         { status: 400 }
       );
     }
-    
-    // Create operation
-    const operation = createBulkOperation(
+
+    const operation = await createBulkOperation(
       type as BulkOperationType,
       validation.valid,
       projectId || 'default',
-      userId || 'anonymous'
+      userId || session.user.id,
+      session.organizationId
     );
-    
+
     return NextResponse.json({
       success: true,
       data: operation,

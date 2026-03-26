@@ -37,8 +37,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: due });
     }
 
-    // Seed demo schedules on first access
-    await initializeDemoSchedules();
+    // Seed demo schedules on first access (idempotent - only runs if org has no schedules)
+    await initializeDemoSchedules(organizationId);
 
     const schedules = await listSchedules(organizationId, projectId);
     return NextResponse.json({ success: true, data: schedules });

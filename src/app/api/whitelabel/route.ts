@@ -1,51 +1,45 @@
 // White-label API Route
-// Manages white-label configurations
+// Manages white-label configurations - persisted in OrgSetting JSON
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api/auth';
-import {
-  mockWhitelabelConfigs,
-  type WhitelabelConfig,
-  defaultBranding,
-} from '@/lib/whitelabel/config';
+import { prisma } from '@/lib/db';
+import type { Prisma } from '@/generated/prisma';
+import { type WhitelabelConfig, defaultBranding } from '@/lib/whitelabel/config';
 
-// In-memory storage
-let whitelabelConfigs = [...mockWhitelabelConfigs];
+const ORG_WHITELABEL_KEY = 'whitelabel_config';
+
+async function getConfigFromDB(organizationId: string): Promise<WhitelabelConfig | null> {
+  try {
+    const setting = await prisma.orgSetting.findUnique({
+      where: { organizationId_key: { organizationId, key: ORG_WHITELABEL_KEY } },
+    });
+    if (!setting) return null;
+    return setting.value as unknown as WhitelabelConfig;
+  } catch {
+    return null;
+  }
+}
+
+async function saveConfigToDB(config: WhitelabelConfig): Promise<void> {
+  await prisma.orgSetting.upsert({
+    where: { organizationId_key: { organizationId: config.organizationId, key: ORG_WHITELABEL_KEY } },
+    create: { organizationId: config.organizationId, key: ORG_WHITELABEL_KEY, value: config as unknown as Prisma.JsonObject },
+    update: { value: config as unknown as Prisma.JsonObject },
+  });
+}
 
 // GET - Get whitelabel config
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth();
+    const session = await requireAuth();
     const { searchParams } = new URL(request.url);
-    const organizationId = searchParams.get('organizationId');
-    const domain = searchParams.get('domain');
+    const organizationId = searchParams.get('organizationId') || session.organizationId;
 
-    // Find by domain
-    if (domain) {
-      const config = whitelabelConfigs.find(c => c.customDomain === domain);
-      if (config) {
-        return NextResponse.json({ config });
-      }
-      // Return default branding if no custom domain
-      return NextResponse.json({
-        config: null,
-        defaultBranding
-      });
-    }
-
-    // Find by organization
-    if (organizationId) {
-      const config = whitelabelConfigs.find(c => c.organizationId === organizationId);
-      return NextResponse.json({
-        config: config || null,
-        defaultBranding,
-      });
-    }
-
-    // Return all configs (admin only)
+    const config = await getConfigFromDB(organizationId);
     return NextResponse.json({
-      configs: whitelabelConfigs,
-      total: whitelabelConfigs.length,
+      config: config || null,
+      defaultBranding,
     });
   } catch (error) {
     if (error instanceof Response) return error;
@@ -53,15 +47,17 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create whitelabel config
+// POST - Create or update whitelabel config
 export async function POST(request: NextRequest) {
   try {
-    await requireAuth();
+    const session = await requireAuth();
     const body = await request.json();
-    
-    const newConfig: WhitelabelConfig = {
-      id: `wl-${Date.now()}`,
-      organizationId: body.organizationId,
+    const organizationId = body.organizationId || session.organizationId;
+
+    const existing = await getConfigFromDB(organizationId);
+    const config: WhitelabelConfig = {
+      id: existing?.id || `wl-${Date.now()}`,
+      organizationId,
       enabled: body.enabled ?? true,
       branding: {
         name: body.branding?.name || defaultBranding.name,
@@ -73,17 +69,16 @@ export async function POST(request: NextRequest) {
       customDomain: body.customDomain,
       emailSettings: body.emailSettings,
       features: body.features,
-      createdAt: new Date().toISOString(),
+      createdAt: existing?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
-    whitelabelConfigs.push(newConfig);
-
-    return NextResponse.json({ config: newConfig }, { status: 201 });
+    await saveConfigToDB(config);
+    return NextResponse.json({ config }, { status: existing ? 200 : 201 });
   } catch (error) {
     if (error instanceof Response) return error;
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to create config' },
+      { error: error instanceof Error ? error.message : 'Failed to save config' },
       { status: 400 }
     );
   }
@@ -92,27 +87,24 @@ export async function POST(request: NextRequest) {
 // PUT - Update whitelabel config
 export async function PUT(request: NextRequest) {
   try {
-    await requireAuth();
+    const session = await requireAuth();
     const body = await request.json();
-    const { id, ...updates } = body;
+    const organizationId = body.organizationId || session.organizationId;
 
-    const index = whitelabelConfigs.findIndex(c => c.id === id);
-    if (index === -1) {
+    const existing = await getConfigFromDB(organizationId);
+    if (!existing) {
       return NextResponse.json({ error: 'Config not found' }, { status: 404 });
     }
 
     const updatedConfig: WhitelabelConfig = {
-      ...whitelabelConfigs[index],
-      ...updates,
-      branding: {
-        ...whitelabelConfigs[index].branding,
-        ...updates.branding,
-      },
+      ...existing,
+      ...body,
+      branding: { ...existing.branding, ...body.branding },
+      organizationId,
       updatedAt: new Date().toISOString(),
     };
 
-    whitelabelConfigs[index] = updatedConfig;
-
+    await saveConfigToDB(updatedConfig);
     return NextResponse.json({ config: updatedConfig });
   } catch (error) {
     if (error instanceof Response) return error;
@@ -126,20 +118,13 @@ export async function PUT(request: NextRequest) {
 // DELETE - Delete whitelabel config
 export async function DELETE(request: NextRequest) {
   try {
-    await requireAuth();
+    const session = await requireAuth();
     const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+    const organizationId = searchParams.get('organizationId') || session.organizationId;
 
-    if (!id) {
-      return NextResponse.json({ error: 'Config ID required' }, { status: 400 });
-    }
-
-    const index = whitelabelConfigs.findIndex(c => c.id === id);
-    if (index === -1) {
-      return NextResponse.json({ error: 'Config not found' }, { status: 404 });
-    }
-
-    whitelabelConfigs.splice(index, 1);
+    await prisma.orgSetting.deleteMany({
+      where: { organizationId, key: ORG_WHITELABEL_KEY },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
