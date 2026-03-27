@@ -233,10 +233,16 @@ export const auth = betterAuth({
   advanced: {
     // Use secure cookies in production
     useSecureCookies: process.env.NODE_ENV === 'production',
-    
+
     // Cookie prefix
     cookiePrefix: 'optimus',
-    
+
+    // Generate UUID-format IDs — required because Prisma schema uses @db.Uuid
+    // Without this, Better Auth generates short alphanumeric IDs that fail PostgreSQL UUID cast
+    generateId: () => {
+      return crypto.randomUUID()
+    },
+
     // Generate session token
     generateSessionToken: () => {
       return crypto.randomUUID()
