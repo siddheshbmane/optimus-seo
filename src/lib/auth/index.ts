@@ -44,6 +44,14 @@ async function sendEmail({ to, subject, html }: { to: string; subject: string; h
 }
 
 export const auth = betterAuth({
+  // Base URL — required for CORS and magic link redirect URLs
+  baseURL: process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+
+  // Trusted origins — allow requests from the app's own origin
+  trustedOrigins: [
+    process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+  ],
+
   // Database adapter
   database: prismaAdapter(prisma, {
     provider: 'postgresql',
