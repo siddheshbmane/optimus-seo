@@ -84,6 +84,31 @@ export const auth = betterAuth({
     enabled: true,
     // Auto sign-in after signup
     autoSignIn: true,
+    // Enable password reset flow
+    sendResetPassword: async ({ user, url }) => {
+      console.log(`\n🔑 Password Reset for ${user.email}:\n${url}\n`)
+      if (!transporter) return
+      try {
+        await sendEmail({
+          to: user.email,
+          subject: 'Reset your Optimus SEO password',
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #FD8C73;">Optimus SEO</h2>
+              <p>Click the button below to reset your password:</p>
+              <a href="${url}" style="display: inline-block; background: #FD8C73; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 16px 0;">
+                Reset Password
+              </a>
+              <p style="color: #666; font-size: 14px;">
+                This link expires in 1 hour. If you didn't request this, you can safely ignore this email.
+              </p>
+            </div>
+          `,
+        })
+      } catch (err) {
+        console.error(`[Auth] Failed to send password reset email to ${user.email}:`, err)
+      }
+    },
   },
   
   // Session configuration
@@ -153,16 +178,14 @@ export const auth = betterAuth({
   ],
   
   // User fields mapping
+  // NOTE: 'role' is NOT listed here — it's a PostgreSQL enum on the DB with a
+  // default value of 'executive'. Including it in additionalFields causes
+  // Better Auth to attempt a raw string insert which fails the enum cast.
   user: {
     additionalFields: {
       avatarUrl: {
         type: 'string',
         required: false,
-      },
-      role: {
-        type: 'string',
-        required: false,
-        defaultValue: 'executive',
       },
     },
   },
