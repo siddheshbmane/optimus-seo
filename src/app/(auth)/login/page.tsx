@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, ArrowRight, Sparkles, CheckCircle, Zap } from "lucide-react";
+import { Mail, Lock, ArrowRight, Sparkles, CheckCircle, Zap, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +16,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [magicLinkSent, setMagicLinkSent] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -56,16 +57,20 @@ export default function LoginPage() {
       const result = await signIn.email({
         email,
         password,
+        callbackURL: "/dashboard",
+        fetchOptions: {
+          onSuccess: () => {
+            window.location.href = "/dashboard";
+          },
+        },
       });
-      
+
       if (result.error) {
         setError(result.error.message || "Invalid email or password");
-      } else {
-        router.push("/dashboard");
+        setIsLoading(false);
       }
     } catch (err) {
       setError("An error occurred. Please try again.");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -272,13 +277,21 @@ export default function LoginPage() {
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
                       <Input
-                        type="password"
+                        type={showPassword ? "text" : "password"}
                         placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10"
+                        className="pl-10 pr-10"
                         required
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+                        tabIndex={-1}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
                     </div>
                   </div>
                 )}

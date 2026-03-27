@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, User, ArrowRight, Sparkles, Check, Zap } from "lucide-react";
+import { Mail, Lock, User, ArrowRight, Sparkles, Check, Zap, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,6 +24,9 @@ export default function SignupPage() {
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [showConfirm, setShowConfirm] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState("");
 
@@ -31,23 +34,32 @@ export default function SignupPage() {
     e.preventDefault();
     setIsLoading(true);
     setError("");
-    
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      // Use Better Auth signup
       const result = await signUp.email({
         email,
         password,
         name,
+        callbackURL: "/dashboard",
+        fetchOptions: {
+          onSuccess: () => {
+            window.location.href = "/dashboard";
+          },
+        },
       });
-      
+
       if (result.error) {
         setError(result.error.message || "Failed to create account");
-      } else {
-        router.push("/dashboard");
+        setIsLoading(false);
       }
     } catch (err) {
       setError("An error occurred. Please try again.");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -235,18 +247,52 @@ export default function SignupPage() {
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
                   <Input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     placeholder="Create a strong password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 pr-10"
                     required
                     minLength={8}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-                <p className="text-xs text-text-muted">
-                  Must be at least 8 characters
-                </p>
+                <p className="text-xs text-text-muted">Must be at least 8 characters</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-text-primary">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
+                  <Input
+                    type={showConfirm ? "text" : "password"}
+                    placeholder="Repeat your password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="pl-10 pr-10"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+                    tabIndex={-1}
+                  >
+                    {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {confirmPassword && password !== confirmPassword && (
+                  <p className="text-xs text-red-500">Passwords do not match</p>
+                )}
               </div>
 
               <Button
