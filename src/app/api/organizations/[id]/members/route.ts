@@ -10,6 +10,8 @@ import { prisma } from '@/lib/db'
 import { requireAuth, requirePermission } from '@/lib/api/auth'
 import { success, paginated, errors } from '@/lib/api/response'
 import { validateBody, validateQuery, inviteUserSchema, paginationSchema } from '@/lib/api/validation'
+import { sendEmail } from '@/lib/email/service'
+import { teamInviteEmail } from '@/lib/email/templates'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -122,9 +124,34 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       },
     })
     
-    // TODO: Send invitation email via Resend
-    console.log(`Invitation sent to ${data.email}`)
-    
+    // Send invitation email
+    try {
+      const org = await prisma.organization.findUnique({
+        where: { id },
+        select: { name: true },
+      })
+      const orgName = org?.name || 'your organization'
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      const inviteUrl = `${appUrl}/login`
+
+      const email = teamInviteEmail({
+        inviterName: session.user.name,
+        projectName: orgName,
+        role: data.role,
+        inviteUrl,
+      })
+
+      await sendEmail({
+        to: data.email,
+        subject: email.subject,
+        html: email.html,
+        text: email.text,
+      })
+    } catch (emailError) {
+      // Log but don't fail the invitation if email fails
+      console.error('Failed to send invitation email:', emailError)
+    }
+
     return success(user)
   } catch (error) {
     if (error instanceof Response) {

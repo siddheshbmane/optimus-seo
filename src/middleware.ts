@@ -29,6 +29,7 @@ const protectedRoutes = [
   '/reports',
   '/settings',
   '/approvals',
+  '/super-admin',
 ]
 
 // Routes that are always public
@@ -36,6 +37,7 @@ const publicRoutes = [
   '/',
   '/login',
   '/signup',
+  '/super-admin/login',
   '/api/auth',
   '/home',
   '/pricing',
@@ -80,7 +82,12 @@ export async function middleware(request: NextRequest) {
   ) {
     return NextResponse.next()
   }
-  
+
+  // Allow super admin login page (must be before protected route check)
+  if (pathname === '/super-admin/login') {
+    return NextResponse.next()
+  }
+
   // For protected routes, check authentication
   if (isProtectedRoute) {
     // Get the session cookie — check both plain and __Secure- prefixed names

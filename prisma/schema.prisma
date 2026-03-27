@@ -186,6 +186,7 @@ model User {
   emailVerified   Boolean   @default(false)
   role            UserRole  @default(admin)
   isActive        Boolean   @default(true)
+  isSuperAdmin    Boolean   @default(false)
   lastLoginAt     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -1333,4 +1334,85 @@ model PricingPlan {
 
   // Relations
   organizations Organization[]
+}
+
+// ============================================================================
+// SUPER ADMIN & PLATFORM TRACKING TABLES
+// ============================================================================
+
+model LlmUsageLog {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String?  @db.Uuid
+  userId          String?  @db.Uuid
+  model           String   @db.VarChar(100)  // e.g., "llama-3.3-70b", "gpt-4o"
+  provider        String   @db.VarChar(50)   // e.g., "groq", "openai"
+  feature         String   @db.VarChar(100)  // e.g., "content_generation", "site_audit"
+  inputTokens     Int      @default(0)
+  outputTokens    Int      @default(0)
+  totalTokens     Int      @default(0)
+  costCents       Float    @default(0)       // cost in cents
+  latencyMs       Int?                        // response time
+  success         Boolean  @default(true)
+  errorMessage    String?  @db.Text
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  @@index([organizationId, createdAt], name: "idx_llm_usage_org_date")
+  @@index([userId, createdAt], name: "idx_llm_usage_user_date")
+  @@index([provider, model], name: "idx_llm_usage_provider")
+  @@index([feature], name: "idx_llm_usage_feature")
+  @@index([createdAt], name: "idx_llm_usage_date")
+}
+
+model ApiUsageLog {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String?  @db.Uuid
+  userId          String?  @db.Uuid
+  endpoint        String   @db.VarChar(255)
+  method          String   @db.VarChar(10)
+  statusCode      Int
+  latencyMs       Int?
+  requestSize     Int?
+  responseSize    Int?
+  ipAddress       String?  @db.VarChar(45)
+  userAgent       String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  @@index([organizationId, createdAt], name: "idx_api_usage_org_date")
+  @@index([endpoint, createdAt], name: "idx_api_usage_endpoint")
+  @@index([createdAt], name: "idx_api_usage_date")
+}
+
+model AuditLog {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String?  @db.Uuid
+  userId          String?  @db.Uuid
+  userEmail       String?  @db.VarChar(255)
+  action          String   @db.VarChar(100)  // e.g., "user.create", "project.delete"
+  resource        String   @db.VarChar(100)  // e.g., "user", "project", "organization"
+  resourceId      String?  @db.VarChar(255)
+  source          String   @default("app") @db.VarChar(50)  // "app", "api", "super_admin"
+  changes         Json     @default("{}")    // { before: {}, after: {} }
+  ipAddress       String?  @db.VarChar(45)
+  userAgent       String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  @@index([organizationId, createdAt], name: "idx_audit_log_org_date")
+  @@index([userId, createdAt], name: "idx_audit_log_user_date")
+  @@index([action], name: "idx_audit_log_action")
+  @@index([resource, resourceId], name: "idx_audit_log_resource")
+  @@index([source], name: "idx_audit_log_source")
+  @@index([createdAt], name: "idx_audit_log_date")
+}
+
+model PlatformMetric {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  metricName      String   @db.VarChar(100)  // e.g., "total_users", "mrr", "dau"
+  metricValue     Float
+  dimension       String?  @db.VarChar(100)  // optional grouping (e.g., "plan:pro")
+  period          String   @db.VarChar(20)   // "daily", "weekly", "monthly"
+  recordedAt      DateTime @default(now())
+
+  @@index([metricName, recordedAt], name: "idx_platform_metric_name")
+  @@index([period, recordedAt], name: "idx_platform_metric_period")
 }

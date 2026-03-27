@@ -5,7 +5,7 @@
  * Supports:
  * - Magic link (passwordless) authentication via Nodemailer
  * - Email/Password authentication
- * - Google OAuth
+ * - Google OAuth (planned for future)
  * - Organization-based multi-tenancy
  * - Role-based access control
  * - Demo bypass mode for testing

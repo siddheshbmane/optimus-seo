@@ -129,6 +129,36 @@ async function main() {
     console.log('✅ Sample project:', created.name)
   }
 
+  // Seed Super Admin user
+  const SUPER_ADMIN_ID = '00000000-0000-0000-0000-000000000099'
+  const superAdmin = await prisma.user.upsert({
+    where: { id: SUPER_ADMIN_ID },
+    update: { isSuperAdmin: true },
+    create: {
+      id: SUPER_ADMIN_ID,
+      email: 'digital@olioglobaladtech.com',
+      name: 'Siddhesh Mane',
+      role: 'owner',
+      isSuperAdmin: true,
+      organizationId: DEV_ORG_ID,
+      emailVerified: true,
+    },
+  })
+  console.log('✅ Super Admin seeded:', superAdmin.email)
+
+  // Seed Super Admin account record
+  await prisma.account.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000098' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000098',
+      userId: SUPER_ADMIN_ID,
+      accountId: SUPER_ADMIN_ID,
+      providerId: 'credential',
+    },
+  })
+  console.log('✅ Super Admin account record created')
+
   console.log('🎉 Database seed completed!')
 }
 

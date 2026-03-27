@@ -21,6 +21,7 @@ export interface AuthSession {
     name: string
     role: Role
     organizationId: string
+    isSuperAdmin?: boolean
   }
   organizationId: string
 }
@@ -33,6 +34,7 @@ const MOCK_DEV_SESSION: AuthSession = {
     name: 'Development User',
     role: 'owner' as Role,
     organizationId: '00000000-0000-0000-0000-000000000001',
+    isSuperAdmin: true,
   },
   organizationId: '00000000-0000-0000-0000-000000000001',
 }
@@ -101,6 +103,7 @@ export async function getSession(): Promise<AuthSession | null> {
         name: true,
         role: true,
         organizationId: true,
+        isSuperAdmin: true,
       },
     })
 
@@ -125,6 +128,7 @@ export async function getSession(): Promise<AuthSession | null> {
         name: user.name,
         role: user.role as Role,
         organizationId: user.organizationId,
+        isSuperAdmin: user.isSuperAdmin,
       },
       organizationId: user.organizationId,
     }
