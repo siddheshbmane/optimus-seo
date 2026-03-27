@@ -109,32 +109,39 @@ export const auth = betterAuth({
     // Magic link authentication
     magicLink({
       sendMagicLink: async ({ email, url }) => {
-        // In development without SMTP, log the magic link
-        if (process.env.NODE_ENV === 'development' && !transporter) {
-          console.log(`\n🔗 Magic Link for ${email}:\n${url}\n`)
+        // Always log the magic link for debugging (visible in Vercel logs)
+        console.log(`\n🔗 Magic Link for ${email}:\n${url}\n`)
+
+        // If no transporter, skip email silently (demo/dev mode)
+        if (!transporter) {
           return
         }
-        
-        // Send via Nodemailer
-        await sendEmail({
-          to: email,
-          subject: 'Sign in to Optimus SEO',
-          html: `
-            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #FD8C73;">Optimus SEO</h2>
-              <p>Click the button below to sign in to your account:</p>
-              <a href="${url}" style="display: inline-block; background: #FD8C73; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 16px 0;">
-                Sign In
-              </a>
-              <p style="color: #666; font-size: 14px;">
-                This link expires in 10 minutes. If you didn't request this, you can safely ignore this email.
-              </p>
-              <p style="color: #666; font-size: 14px;">
-                Or copy this link: ${url}
-              </p>
-            </div>
-          `,
-        })
+
+        // Attempt to send via Nodemailer — never throw (graceful degradation)
+        try {
+          await sendEmail({
+            to: email,
+            subject: 'Sign in to Optimus SEO',
+            html: `
+              <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #FD8C73;">Optimus SEO</h2>
+                <p>Click the button below to sign in to your account:</p>
+                <a href="${url}" style="display: inline-block; background: #FD8C73; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 16px 0;">
+                  Sign In
+                </a>
+                <p style="color: #666; font-size: 14px;">
+                  This link expires in 10 minutes. If you didn't request this, you can safely ignore this email.
+                </p>
+                <p style="color: #666; font-size: 14px;">
+                  Or copy this link: ${url}
+                </p>
+              </div>
+            `,
+          })
+        } catch (err) {
+          // Log but don't throw — prevents 500 when SMTP fails
+          console.error(`[Auth] Failed to send magic link email to ${email}:`, err)
+        }
       },
     }),
     
