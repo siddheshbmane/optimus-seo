@@ -182,12 +182,24 @@ export const auth = betterAuth({
   // default value of 'executive'. Including it in additionalFields causes
   // Better Auth to attempt a raw string insert which fails the enum cast.
   user: {
+    // Map Better Auth's 'image' field to our schema's 'avatarUrl' column.
+    // Without this, Better Auth tries to INSERT an 'image' column that doesn't
+    // exist in our Prisma schema, causing a silent FAILED_TO_CREATE_USER error.
+    fields: {
+      image: 'avatarUrl',
+    },
     additionalFields: {
       avatarUrl: {
         type: 'string',
         required: false,
       },
     },
+  },
+
+  // Enable verbose logging so Prisma errors are visible in Vercel logs
+  logger: {
+    level: 'error',
+    disabled: false,
   },
   
   // Rate limiting
@@ -239,8 +251,13 @@ export const auth = betterAuth({
 
     // Generate UUID-format IDs — required because Prisma schema uses @db.Uuid
     // Without this, Better Auth generates short alphanumeric IDs that fail PostgreSQL UUID cast
-    generateId: () => {
+    generateId: ({ model: _model, size: _size }: { model: string; size?: number }) => {
       return crypto.randomUUID()
+    },
+
+    // Also tell the database adapter to use UUIDs
+    database: {
+      generateId: 'uuid' as const,
     },
 
     // Generate session token
