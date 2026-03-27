@@ -28,15 +28,15 @@ export const DEMO_PASSWORD = 'demo123!@#Secure'
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'digital@olioglobaladtech.com',
-    pass: 'yfhvlfhvqkrqnshk',
+    user: process.env.GMAIL_USER || 'digital@olioglobaladtech.com',
+    pass: process.env.GMAIL_APP_PASSWORD || 'yfhvlfhvqkrqnshk',
   },
 })
 
 // Send email function
 async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
   await transporter.sendMail({
-    from: 'Optimus SEO <digital@olioglobaladtech.com>',
+    from: `Optimus SEO <${process.env.GMAIL_USER || 'digital@olioglobaladtech.com'}>`,
     to,
     subject,
     html,

@@ -184,7 +184,7 @@ model User {
   name            String    @db.VarChar(255)
   avatarUrl       String?   @db.Text
   emailVerified   Boolean   @default(false)
-  role            UserRole  @default(executive)
+  role            UserRole  @default(admin)
   isActive        Boolean   @default(true)
   lastLoginAt     DateTime?
   createdAt       DateTime  @default(now())
