@@ -83,9 +83,11 @@ export async function middleware(request: NextRequest) {
   
   // For protected routes, check authentication
   if (isProtectedRoute) {
-    // Get the session cookie
-    const sessionCookie = request.cookies.get('optimus.session_token')
-    
+    // Get the session cookie — check both plain and __Secure- prefixed names
+    // In production (HTTPS), Better Auth uses __Secure- prefix with useSecureCookies
+    const sessionCookie = request.cookies.get('__Secure-optimus.session_token')
+      || request.cookies.get('optimus.session_token')
+
     if (!sessionCookie) {
       // Redirect to login with return URL
       const loginUrl = new URL('/login', request.url)
