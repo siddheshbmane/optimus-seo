@@ -66,7 +66,7 @@ export function ProjectBar({
             )}
           </div>
         </div>
-        <Button variant="accent" size="icon-sm">
+        <Button variant="accent" size="icon-sm" onClick={() => router.push(`/projects/${projectId}/execution/content-writer`)}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>
@@ -135,7 +135,7 @@ export function ProjectBar({
             <Users className="h-4 w-4 mr-1" />
             Invite
           </Button>
-          <Button variant="accent" size="sm">
+          <Button variant="accent" size="sm" onClick={() => router.push(`/projects/${projectId}/execution/content-writer`)}>
             <Plus className="h-4 w-4 mr-1" />
             New Content
           </Button>

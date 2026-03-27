@@ -174,7 +174,10 @@ export default function SiteAuditPage() {
   const { project } = useProjectContext();
   const { startAudit, completeAudit, failAudit } = useProjectConfig();
 
-  const [activeTab, setActiveTab] = React.useState<TabType>("overview");
+  const [activeTab, setActiveTabRaw] = React.useState<TabType>("overview");
+  const setActiveTab = React.useCallback((tab: TabType) => {
+    React.startTransition(() => { setActiveTabRaw(tab); });
+  }, []);
   const [isCrawling, setIsCrawling] = React.useState(false);
   const [crawlProgress, setCrawlProgress] = React.useState("");
   const [crawlDepth, setCrawlDepth] = React.useState<number>(5);
@@ -494,24 +497,24 @@ export default function SiteAuditPage() {
               <CardTitle>Issue Distribution</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[200px]">
+              <div className="h-[250px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={issueDistributionData}
                       cx="50%"
-                      cy="50%"
-                      innerRadius={40}
-                      outerRadius={70}
+                      cy="45%"
+                      innerRadius={35}
+                      outerRadius={60}
                       paddingAngle={5}
                       dataKey="value"
-                      label={({ name, value }) => `${name}: ${value}`}
                     >
                       {issueDistributionData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.fill} />
                       ))}
                     </Pie>
                     <Tooltip />
+                    <Legend verticalAlign="bottom" height={36} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>

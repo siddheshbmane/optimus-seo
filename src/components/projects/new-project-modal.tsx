@@ -205,11 +205,16 @@ export function NewProjectModal({ isOpen, onClose, onSuccess }: NewProjectModalP
     }
   }, [isOpen]);
 
-  // Validate URL format
+  // Validate URL format — ensures it has a valid domain with TLD
   const isValidUrl = (url: string): boolean => {
     try {
-      const parsed = new URL(url.startsWith("http") ? url : `https://${url}`);
-      return !!parsed.hostname;
+      const cleaned = url.replace(/^https?:\/\//, "").trim();
+      if (!cleaned) return false;
+      // Must have at least one dot (TLD), no spaces, no special chars in domain
+      const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}(\/.*)?$/;
+      if (!domainRegex.test(cleaned)) return false;
+      const parsed = new URL(`https://${cleaned}`);
+      return !!parsed.hostname && parsed.hostname.includes(".");
     } catch {
       return false;
     }

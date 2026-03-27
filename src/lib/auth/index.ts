@@ -50,7 +50,9 @@ export const auth = betterAuth({
   // Trusted origins — allow requests from the app's own origin
   trustedOrigins: [
     process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-  ],
+    'https://optimus-seo.vercel.app',
+    'http://localhost:3000',
+  ].filter((v, i, a) => a.indexOf(v) === i), // deduplicate
 
   // Database adapter
   database: prismaAdapter(prisma, {
@@ -73,30 +75,25 @@ export const auth = betterAuth({
     magicLink({
       sendMagicLink: async ({ email, url }) => {
         console.log(`\n🔗 Magic Link for ${email}:\n${url}\n`)
-        try {
-          await sendEmail({
-            to: email,
-            subject: 'Sign in to Optimus SEO',
-            html: `
-              <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #FD8C73;">Optimus SEO</h2>
-                <p>Click the button below to sign in to your account:</p>
-                <a href="${url}" style="display: inline-block; background: #FD8C73; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 16px 0;">
-                  Sign In
-                </a>
-                <p style="color: #666; font-size: 14px;">
-                  This link expires in 10 minutes. If you didn't request this, you can safely ignore this email.
-                </p>
-                <p style="color: #666; font-size: 14px;">
-                  Or copy this link: ${url}
-                </p>
-              </div>
-            `,
-          })
-        } catch (err) {
-          // Log but don't throw — prevents 500 when SMTP fails
-          console.error(`[Auth] Failed to send magic link email to ${email}:`, err)
-        }
+        await sendEmail({
+          to: email,
+          subject: 'Sign in to Optimus SEO',
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #FD8C73;">Optimus SEO</h2>
+              <p>Click the button below to sign in to your account:</p>
+              <a href="${url}" style="display: inline-block; background: #FD8C73; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 16px 0;">
+                Sign In
+              </a>
+              <p style="color: #666; font-size: 14px;">
+                This link expires in 10 minutes. If you didn't request this, you can safely ignore this email.
+              </p>
+              <p style="color: #666; font-size: 14px;">
+                Or copy this link: ${url}
+              </p>
+            </div>
+          `,
+        })
       },
     }),
     

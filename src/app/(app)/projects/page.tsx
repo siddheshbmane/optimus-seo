@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Modal, ModalFooter } from "@/components/ui/modal";
 import { mockProjects, type Project as MockProject } from "@/data/mock-projects";
 import { useProjects, type Project as DBProject } from "@/hooks/use-projects";
 import { NewProjectModal } from "@/components/projects/new-project-modal";
@@ -73,8 +74,8 @@ function toDisplayProject(project: DBProject): DisplayProject {
     url: project.clientUrl,
     status: statusMap[project.status] || "created",
     healthScore: project.healthScore || 0,
-    keywords: 0, // Will be populated from related data
-    backlinks: 0,
+    keywords: project._count?.keywords ?? 0,
+    backlinks: project._count?.siteAudits ?? 0,
     traffic: 0,
     trafficTrend: 0,
     agents: { running: 0, total: 0 },
@@ -365,11 +366,12 @@ export default function ProjectsPage() {
           <div className="hidden md:block space-y-2">
             {/* List Header */}
             <div className="grid grid-cols-12 gap-4 px-4 py-2 text-xs font-medium text-text-muted uppercase tracking-wider">
-              <div className="col-span-4">Project</div>
+              <div className="col-span-3">Project</div>
               <div className="col-span-2 text-center">Health</div>
-              <div className="col-span-2 text-center">Keywords</div>
+              <div className="col-span-1 text-center">Keywords</div>
+              <div className="col-span-1 text-center">Backlinks</div>
               <div className="col-span-2 text-center">Traffic</div>
-              <div className="col-span-1 text-center">Status</div>
+              <div className="col-span-2 text-center">Status</div>
               <div className="col-span-1"></div>
             </div>
             {filteredProjects.map((project) => (
@@ -378,7 +380,7 @@ export default function ProjectsPage() {
                 href={`/projects/${project.id}/sales`}
                 className="grid grid-cols-12 gap-4 items-center px-4 py-3 bg-bg-card border border-border rounded-lg hover:border-accent/50 transition-colors"
               >
-                <div className="col-span-4 flex items-center gap-3">
+                <div className="col-span-3 flex items-center gap-3">
                   <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
                     <span className="text-accent font-semibold text-sm">
                       {project.name.charAt(0)}
@@ -404,8 +406,11 @@ export default function ProjectsPage() {
                   </span>
                   <span className="text-text-muted">/100</span>
                 </div>
-                <div className="col-span-2 text-center font-mono text-text-primary">
+                <div className="col-span-1 text-center font-mono text-text-primary">
                   {formatNumber(project.keywords)}
+                </div>
+                <div className="col-span-1 text-center font-mono text-text-primary">
+                  {formatNumber(project.backlinks)}
                 </div>
                 <div className="col-span-2 text-center">
                   <div className="flex items-center justify-center gap-1">
@@ -428,7 +433,7 @@ export default function ProjectsPage() {
                     )}
                   </div>
                 </div>
-                <div className="col-span-1 flex justify-center">
+                <div className="col-span-2 flex justify-center">
                   <Badge variant={getStatusBadgeVariant(project.status)}>
                     <span className="flex items-center gap-1">
                       {getStatusIcon(project.status)}
@@ -482,8 +487,10 @@ export default function ProjectsPage() {
   );
 }
 
-function ProjectCard({ project, viewMode }: { project: DisplayProject; viewMode: ViewMode }) {
+const ProjectCard = React.memo(function ProjectCard({ project, viewMode }: { project: DisplayProject; viewMode: ViewMode }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
   // Close menu on outside click
@@ -546,7 +553,9 @@ function ProjectCard({ project, viewMode }: { project: DisplayProject; viewMode:
                         e.preventDefault();
                         e.stopPropagation();
                         setMenuOpen(false);
-                        if (item.href) {
+                        if (item.destructive) {
+                          setShowDeleteConfirm(true);
+                        } else if (item.href) {
                           window.location.href = item.href;
                         }
                       }}
@@ -650,6 +659,45 @@ function ProjectCard({ project, viewMode }: { project: DisplayProject; viewMode:
           </div>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        title="Delete Project"
+        description="This action cannot be undone."
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Are you sure you want to delete <strong>&quot;{project.name}&quot;</strong>? This will permanently remove all data including keywords, reports, and agent history.
+          </p>
+          <ModalFooter>
+            <Button variant="ghost" onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="accent"
+              className="bg-error hover:bg-error/90 text-white"
+              disabled={isDeleting}
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDeleting(true);
+                try {
+                  await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
+                  setShowDeleteConfirm(false);
+                  window.location.reload();
+                } catch {
+                  setIsDeleting(false);
+                }
+              }}
+            >
+              {isDeleting ? "Deleting..." : "Delete Project"}
+            </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
     </Link>
   );
-}
+});

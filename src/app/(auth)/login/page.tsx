@@ -41,15 +41,26 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Client-side validation
+    if (!email.trim()) {
+      setError("Email address is required");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
     setIsLoading(true);
     setError("");
     try {
       const result = await signIn.magicLink({
-        email,
+        email: email.trim(),
         callbackURL: "/dashboard",
       });
       if (result.error) {
-        setError(result.error.message || "Failed to send magic link");
+        setError(result.error.message || "Failed to send magic link. Please try again.");
       } else {
         setMagicLinkSent(true);
       }
@@ -138,18 +149,23 @@ export default function LoginPage() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-text-primary">Email</label>
+                  <label htmlFor="login-email" className="text-sm font-medium text-text-primary">Email</label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
                     <Input
+                      id="login-email"
                       type="email"
                       placeholder="you@company.com"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => { setEmail(e.target.value); if (error) setError(""); }}
                       className="pl-10"
-                      required
+                      aria-invalid={!!error}
+                      aria-describedby={error ? "login-email-error" : undefined}
                     />
                   </div>
+                  {error && !error.includes("error occurred") && !error.includes("Failed to send") && (
+                    <p id="login-email-error" className="text-xs text-red-500 mt-1" role="alert">{error}</p>
+                  )}
                 </div>
 
                 <Button type="submit" variant="accent" className="w-full" disabled={isLoading}>

@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useTheme } from "next-themes";
 
 const tabs = [
   { id: "profile", label: "Profile", icon: User },
@@ -44,10 +45,20 @@ const defaultNotifications = [
 ];
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = React.useState("profile");
+  const [activeTab, setActiveTabRaw] = React.useState("profile");
+  const setActiveTab = React.useCallback((tab: string) => {
+    React.startTransition(() => { setActiveTabRaw(tab); });
+  }, []);
   const [saveFeedback, setSaveFeedback] = React.useState<string | null>(null);
   const [notifications, setNotifications] = React.useState(defaultNotifications);
-  const [selectedTheme, setSelectedTheme] = React.useState("System");
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
+
+  // Avoid hydration mismatch for theme
+  React.useEffect(() => { setMounted(true); }, []);
+
+  // Map next-themes value to display label
+  const selectedTheme = mounted ? (theme === "dark" ? "Dark" : theme === "light" ? "Light" : "System") : "System";
 
   const handleSave = (section: string) => {
     setSaveFeedback(section);
@@ -386,21 +397,21 @@ export default function SettingsPage() {
                     <div>
                       <label className="text-sm font-medium text-text-primary mb-3 block">Theme</label>
                       <div className="grid grid-cols-3 gap-4">
-                        {["Light", "Dark", "System"].map((theme) => (
+                        {["Light", "Dark", "System"].map((themeOption) => (
                           <button
-                            key={theme}
-                            onClick={() => setSelectedTheme(theme)}
+                            key={themeOption}
+                            onClick={() => setTheme(themeOption.toLowerCase())}
                             className={cn(
                               "p-4 rounded-lg border-2 transition-colors",
-                              selectedTheme === theme ? "border-accent bg-accent/5" : "border-border hover:border-accent/50"
+                              selectedTheme === themeOption ? "border-accent bg-accent/5" : "border-border hover:border-accent/50"
                             )}
                           >
                             <div className={cn(
                               "h-20 rounded mb-2",
-                              theme === "Light" ? "bg-white border border-border" :
-                              theme === "Dark" ? "bg-gray-900" : "bg-gradient-to-r from-white to-gray-900"
+                              themeOption === "Light" ? "bg-white border border-border" :
+                              themeOption === "Dark" ? "bg-gray-900" : "bg-gradient-to-r from-white to-gray-900"
                             )} />
-                            <p className="text-sm font-medium text-text-primary">{theme}</p>
+                            <p className="text-sm font-medium text-text-primary">{themeOption}</p>
                           </button>
                         ))}
                       </div>
