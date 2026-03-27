@@ -24,49 +24,19 @@ export const DEMO_MODE = process.env.DEMO_MODE === 'true'
 export const DEMO_EMAIL = 'demo@optimus-seo.com'
 export const DEMO_PASSWORD = 'demo123!@#Secure'
 
-// Create Nodemailer transporter
-const createTransporter = () => {
-  // Use SMTP settings from environment
-  if (process.env.SMTP_HOST) {
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    })
-  }
-  
-  // Use Gmail if configured
-  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-      },
-    })
-  }
-  
-  // Fallback: Use Ethereal for testing (emails go to ethereal.email)
-  return null
-}
-
-const transporter = createTransporter()
+// Nodemailer transporter using Gmail
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'digital@olioglobaladtech.com',
+    pass: 'yfhvlfhvqkrqnshk',
+  },
+})
 
 // Send email function
 async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-  if (!transporter) {
-    console.log(`\n📧 Email would be sent to: ${to}`)
-    console.log(`Subject: ${subject}`)
-    console.log(`Content: ${html}\n`)
-    return
-  }
-  
   await transporter.sendMail({
-    from: process.env.EMAIL_FROM || 'Optimus SEO <noreply@optimus-seo.com>',
+    from: 'Optimus SEO <digital@olioglobaladtech.com>',
     to,
     subject,
     html,
@@ -79,38 +49,6 @@ export const auth = betterAuth({
     provider: 'postgresql',
   }),
   
-  // Email & Password enabled for demo mode and regular signup
-  emailAndPassword: {
-    enabled: true,
-    // Auto sign-in after signup
-    autoSignIn: true,
-    // Enable password reset flow
-    sendResetPassword: async ({ user, url }) => {
-      console.log(`\n🔑 Password Reset for ${user.email}:\n${url}\n`)
-      if (!transporter) return
-      try {
-        await sendEmail({
-          to: user.email,
-          subject: 'Reset your Optimus SEO password',
-          html: `
-            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #FD8C73;">Optimus SEO</h2>
-              <p>Click the button below to reset your password:</p>
-              <a href="${url}" style="display: inline-block; background: #FD8C73; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 16px 0;">
-                Reset Password
-              </a>
-              <p style="color: #666; font-size: 14px;">
-                This link expires in 1 hour. If you didn't request this, you can safely ignore this email.
-              </p>
-            </div>
-          `,
-        })
-      } catch (err) {
-        console.error(`[Auth] Failed to send password reset email to ${user.email}:`, err)
-      }
-    },
-  },
-  
   // Session configuration
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
@@ -121,28 +59,12 @@ export const auth = betterAuth({
     },
   },
   
-  // Social providers
-  socialProviders: {
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID || '',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-    },
-  },
-  
   // Plugins
   plugins: [
     // Magic link authentication
     magicLink({
       sendMagicLink: async ({ email, url }) => {
-        // Always log the magic link for debugging (visible in Vercel logs)
         console.log(`\n🔗 Magic Link for ${email}:\n${url}\n`)
-
-        // If no transporter, skip email silently (demo/dev mode)
-        if (!transporter) {
-          return
-        }
-
-        // Attempt to send via Nodemailer — never throw (graceful degradation)
         try {
           await sendEmail({
             to: email,
